@@ -9,7 +9,9 @@ import {
   expandNode,
   focusOn,
   hiddenNeighbors,
+  toggleExplore,
   toggleInList,
+  type ExploreAction,
   type Pinned,
   type ViewResult,
   type ViewState,
@@ -32,8 +34,13 @@ export interface GraphViewApi {
   focusOn(ids: readonly string[]): void;
   expand(id: string): void;
   collapse(id: string): void;
-  /** Doble clic: abre los vecinos ocultos o, si ya estaban abiertos, los cierra. Sin enfoque activo no hace nada. */
+  /** Doble clic del editor: abre los vecinos ocultos o, si ya estaban abiertos, los cierra. Sin enfoque no hace nada. */
   toggleExpand(id: string): "expanded" | "collapsed" | null;
+  /**
+   * Doble clic del visor compartido: retrae a un nodo principal, extiende/contrae vecinos o vuelve a mostrar todo.
+   * El editor sigue usando `toggleExpand` (no cambia datos).
+   */
+  explore(id: string): ExploreAction;
   /** Una entidad recién creada: se añade al enfoque y su tipo deja de estar oculto. */
   reveal(id: string, type: EntityTypeId): void;
   hiddenNeighborIds(id: string): string[];
@@ -85,6 +92,15 @@ export function useGraphView(doc: GraphSnapshot, pinned: Pinned): GraphViewApi {
     [doc, view, result],
   );
 
+  const explore = useCallback(
+    (id: string): ExploreAction => {
+      const next = toggleExplore(view, result, doc, id);
+      if (next.action) setView(next.view);
+      return next.action;
+    },
+    [doc, view, result],
+  );
+
   return useMemo(
     () => ({
       view,
@@ -101,10 +117,11 @@ export function useGraphView(doc: GraphSnapshot, pinned: Pinned): GraphViewApi {
       expand,
       collapse,
       toggleExpand,
+      explore,
       reveal,
       hiddenNeighborIds,
       canCollapse,
     }),
-    [view, result, auraMode, toggleType, toggleEvidence, setDates, setIncludeUndated, showAll, clearFilters, focus, expand, collapse, toggleExpand, reveal, hiddenNeighborIds, canCollapse],
+    [view, result, auraMode, toggleType, toggleEvidence, setDates, setIncludeUndated, showAll, clearFilters, focus, expand, collapse, toggleExpand, explore, reveal, hiddenNeighborIds, canCollapse],
   );
 }

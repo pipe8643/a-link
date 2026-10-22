@@ -1,6 +1,6 @@
 import { ENTITY_CATALOG, type GraphNodeData } from "@a-link/shared";
-import { Maximize, Moon, Sun } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Maximize, Maximize2, Minimize2, Moon, Sun } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Brand } from "@/components/brand";
 import { useTheme } from "@/components/theme-provider";
 import { Badge } from "@/components/ui/badge";
@@ -8,23 +8,31 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime } from "@/lib/format";
 import { NetChartCanvas, type CanvasSelection, type NetChartCanvasHandle } from "../editor/net-chart-canvas";
+import { useGraphView } from "../editor/use-graph-view";
 import { type SharedGraph, SharedLinkError, fetchSharedGraph, fetchSharedImages } from "./queries";
+import { ShareExplorePanel } from "./share-explore-panel";
 import { tokenFromHash } from "./share-link";
 
 type State = { phase: "loading" } | { phase: "error"; error: SharedLinkError } | { phase: "ready"; graph: SharedGraph; images: Map<string, string> };
 
 const NONE: CanvasSelection = { nodeIds: [], edgeIds: [] };
 
+const EXPLORE_STATUS = {
+  focused: "Grafo retraído a esa entidad y sus vecinos.",
+  expanded: "Vecinos extendidos.",
+  collapsed: "Vecinos retraídos.",
+  showall: "Se ve el grafo completo.",
+} as const;
+
 /**
- * Visor PÚBLICO y de SOLO LECTURA de un grafo compartido (`/s#<token>`). No usa la sesión del usuario: el token del
- * fragmento se envía en la cabecera `X-Share-Token`. No hay edición, ni exportación, ni notas ni datos sensibles: el
- * servidor ya los excluye de la respuesta. Puede abrirse dentro de un `<iframe>` (p. ej. el complemento «Web Viewer» de
- * PowerPoint) si el despliegue lo permite (ver `SHARE_FRAME_ANCESTORS`).
+ * Visor PÚBLICO de un grafo compartido (`/s#<token>`). No usa la sesión: el token del fragmento viaja en
+ * `X-Share-Token`. No hay edición ni notas ni campos sensibles. Sí hay exploración: filtrar categorías, arrastrar
+ * entidades (animación de ZoomCharts) y retraer/extender vecinos con doble clic. Puede incrustarse en PowerPoint
+ * (Web Viewer).
  */
 export function SharedViewPage() {
   const { dark, toggle } = useTheme();
   const [state, setState] = useState<State>({ phase: "loading" });
-  const [selection, setSelection] = useState<CanvasSelection>(NONE);
   const canvasRef = useRef<NetChartCanvasHandle>(null);
 
   useEffect(() => {
@@ -54,12 +62,6 @@ export function SharedViewPage() {
     };
   }, []);
 
-  // El lienzo pide la imagen de cada entidad por esta función: aquí son `blob:` ya descargados con el token.
-  const images = state.phase === "ready" ? state.images : null;
-  const imageUrl = useMemo(() => (images ? (n: GraphNodeData) => (n.imageId ? images.get(n.imageId) : undefined) : undefined), [images]);
-
-  const selected = state.phase === "ready" && selection.nodeIds[0] ? state.graph.doc.nodes.find((n) => n.id === selection.nodeIds[0]) : undefined;
-
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
       <header className="flex items-center gap-3 border-b px-4 py-2">
@@ -68,7 +70,7 @@ export function SharedViewPage() {
           {state.phase === "ready" ? (
             <>
               <h1 className="truncate text-sm font-semibold">{state.graph.name}</h1>
-              <p className="text-xs text-muted-foreground">Vista de solo lectura · válido hasta {formatDateTime(state.graph.expiresAt)}</p>
+              <p className="text-xs text-muted-foreground">Vista interactiva de solo lectura · válido hasta {formatDateTime(state.graph.expiresAt)}</p>
             </>
           ) : (
             <h1 className="text-sm font-semibold">Grafo compartido</h1>
@@ -103,23 +105,78 @@ export function SharedViewPage() {
             )}
           </div>
         )}
-        {state.phase === "ready" && (
-          <>
-            <NetChartCanvas ref={canvasRef} doc={state.graph.doc} selection={selection} dark={dark} {...(imageUrl ? { imageUrl } : {})} onSelectionChange={setSelection} readOnly />
-            <p className="sr-only">Visor de solo lectura. Entidades: {state.graph.doc.nodes.map((n) => n.label).join(", ")}.</p>
-            {selected && <EntityCard node={selected} />}
-          </>
-        )}
+        {state.phase === "ready" && <SharedGraphExplorer graph={state.graph} images={state.images} dark={dark} canvasRef={canvasRef} />}
       </main>
     </div>
   );
 }
 
-function EntityCard({ node }: { node: GraphNodeData }) {
+/** Lienzo vivo: filtros, arrastre y retraer/extender. No persiste movimientos (el enlace es de solo lectura). */
+export function SharedGraphExplorer({
+  graph,
+  images,
+  dark,
+  canvasRef,
+}: {
+  graph: SharedGraph;
+  images: Map<string, string>;
+  dark: boolean;
+  canvasRef: RefObject<NetChartCanvasHandle | null>;
+}) {
+  const [selection, setSelection] = useState<CanvasSelection>(NONE);
+  const [status, setStatus] = useState<string | null>(null);
+  const graphView = useGraphView(graph.doc, { nodeIds: selection.nodeIds, edgeIds: selection.edgeIds });
+  const imageUrl = useMemo(() => (n: GraphNodeData) => (n.imageId ? images.get(n.imageId) : undefined), [images]);
+  const selected = selection.nodeIds[0] ? graph.doc.nodes.find((n) => n.id === selection.nodeIds[0]) : undefined;
+
+  return (
+    <>
+      <NetChartCanvas
+        ref={canvasRef}
+        doc={graphView.result.doc}
+        selection={selection}
+        dark={dark}
+        imageUrl={imageUrl}
+        onSelectionChange={setSelection}
+        onNodeDoubleClick={(id) => {
+          const action = graphView.explore(id);
+          setStatus(action ? EXPLORE_STATUS[action] : null);
+        }}
+        readOnly
+        nodesMovable
+      />
+      <ShareExplorePanel doc={graph.doc} graphView={graphView} />
+      <p className="sr-only">
+        Visor interactivo de solo lectura. Entidades: {graph.doc.nodes.map((n) => n.label).join(", ")}.
+      </p>
+      {status && (
+        <p role="status" className="sr-only">
+          {status}
+        </p>
+      )}
+      {selected && <EntityCard node={selected} graphView={graphView} onStatus={setStatus} />}
+    </>
+  );
+}
+
+function EntityCard({
+  node,
+  graphView,
+  onStatus,
+}: {
+  node: GraphNodeData;
+  graphView: ReturnType<typeof useGraphView>;
+  onStatus(text: string | null): void;
+}) {
   const def = ENTITY_CATALOG[node.type];
   const rows = def.fields.flatMap((f) => (node.metadata[f.key] ? [[f.label, node.metadata[f.key]!] as const] : []));
+  const hidden = graphView.hiddenNeighborIds(node.id);
+  const canCollapse = graphView.canCollapse(node.id);
+  const focusActive = graphView.result.focusActive;
+  const isRoot = graphView.result.roots.has(node.id);
+
   return (
-    <aside aria-label={`Datos de ${node.label}`} className="absolute bottom-3 left-3 max-w-xs rounded-lg border bg-card p-3 text-sm shadow-lg">
+    <aside aria-label={`Datos de ${node.label}`} className="absolute right-3 bottom-3 z-10 max-w-xs rounded-lg border bg-card p-3 text-sm shadow-lg">
       <div className="flex items-center gap-2">
         <h2 className="truncate font-semibold">{node.label}</h2>
         <Badge variant="secondary">{def.name}</Badge>
@@ -135,6 +192,35 @@ function EntityCard({ node }: { node: GraphNodeData }) {
           ))}
         </dl>
       )}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const action = graphView.explore(node.id);
+            onStatus(action ? EXPLORE_STATUS[action] : null);
+          }}
+        >
+          {focusActive && (hidden.length > 0 || canCollapse || isRoot) ? (
+            hidden.length > 0 ? (
+              <>
+                <Maximize2 aria-hidden="true" /> Extender ({hidden.length})
+              </>
+            ) : canCollapse || isRoot ? (
+              <>
+                <Minimize2 aria-hidden="true" /> Retraer
+              </>
+            ) : (
+              "Explorar"
+            )
+          ) : (
+            <>
+              <Minimize2 aria-hidden="true" /> Retraer a vecinos
+            </>
+          )}
+        </Button>
+      </div>
     </aside>
   );
 }

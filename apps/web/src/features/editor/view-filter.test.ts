@@ -11,6 +11,7 @@ import {
   expandNode,
   focusOn,
   hiddenNeighbors,
+  toggleExplore,
   toggleInList,
   visibleNeighbors,
   type ViewState,
@@ -180,6 +181,45 @@ describe("enfoque y expansión", () => {
     expect(hiddenNeighbors(doc, v, r, A.id)).toEqual([P.id]);
     expect(visibleNeighbors(doc, v, C.id).sort()).toEqual([B.id, D.id].sort());
     expect(hiddenNeighbors(doc, v, r, F.id)).toEqual([]);
+  });
+});
+
+describe("toggleExplore (visor / PowerPoint vivo)", () => {
+  const step = (v: ViewState, id: string) => {
+    const r = computeView(doc, v);
+    return toggleExplore(v, r, doc, id);
+  };
+
+  it("sin enfoque, un clic retrae a ese nodo y sus vecinos", () => {
+    const { view: v, action } = step(EMPTY_VIEW, B.id);
+    expect(action).toBe("focused");
+    expect(ids(computeView(doc, v))).toEqual(["A", "B", "C"]);
+  });
+
+  it("en un vecino con más conexiones, extiende y luego contrae", () => {
+    let v = focusOn(EMPTY_VIEW, [B.id]);
+    const open = step(v, C.id);
+    expect(open.action).toBe("expanded");
+    expect(ids(computeView(doc, open.view))).toEqual(["A", "B", "C", "D"]);
+    const close = step(open.view, C.id);
+    expect(close.action).toBe("collapsed");
+    expect(ids(computeView(doc, close.view))).toEqual(["A", "B", "C"]);
+  });
+
+  it("en la raíz: primero cierra lo extendido; después muestra todo el grafo", () => {
+    let v = expandNode(focusOn(EMPTY_VIEW, [B.id]), C.id);
+    const fold = step(v, B.id);
+    expect(fold.action).toBe("collapsed");
+    expect(ids(computeView(doc, fold.view))).toEqual(["A", "B", "C"]);
+    const all = step(fold.view, B.id);
+    expect(all.action).toBe("showall");
+    expect(computeView(doc, all.view).filtered).toBe(false);
+  });
+
+  it("un id desconocido no cambia nada", () => {
+    const { view: v, action } = step(EMPTY_VIEW, randomUUID());
+    expect(action).toBeNull();
+    expect(v).toBe(EMPTY_VIEW);
   });
 });
 

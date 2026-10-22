@@ -168,6 +168,7 @@ const LIVE_STEPS = [
   "Para verlo en vivo: Insertar → Complementos de Office → busca «Web Viewer» → inserta el complemento.",
   "Pega la URL completa (incluido lo que va detrás de #) en Web Viewer. Sin el fragmento el visor no autoriza.",
   "Hace falta red y un certificado de confianza. El autofirmado de localhost suele fallar en Office: usa un origen https público o instala el certificado.",
+  "En el visor puedes filtrar categorías, arrastrar las entidades (con las animaciones de ZoomCharts) y hacer doble clic en un nodo principal para retraer o extender sus vecinos.",
   "Si revocas el enlace o caduca, la diapositiva incrustada deja de cargar. Quien tenga la URL ve el grafo guardado en ese momento (no una foto congelada), sin notas ni campos sensibles.",
 ];
 

@@ -18,7 +18,7 @@ editable no lleva halos**. Todo sigue generándose en el navegador.
 | PDF | 1 página: título, fecha, imagen, leyenda y pie «Generado con A-Link» | tamaño (A4, A3, Carta), orientación (automática según el grafo, horizontal, vertical), resolución, fondo, título/fecha/leyenda, etiquetas |
 | PowerPoint con imagen | 1 diapositiva 16:9 con la imagen del grafo | resolución, fondo, título/fecha/leyenda, etiquetas. **La imagen no es editable nodo a nodo.** |
 | PowerPoint editable | 1 diapositiva con **formas y líneas nativas** (una forma por entidad con su color y nombre; una línea por relación con su trazo y flechas) | título/fecha/leyenda, etiquetas |
-| PowerPoint interactivo | 2 diapositivas: vista previa + hipervínculo a `/s#token` e instrucciones para el complemento **Web Viewer** | crea un enlace de solo lectura de 7 días. **No contiene ZoomCharts ejecutable.** |
+| PowerPoint interactivo | 2 diapositivas: vista previa + hipervínculo a `/s#token` e instrucciones para el complemento **Web Viewer** | crea un enlace de 7 días. El visor `/s` es ZoomCharts vivo: filtrar categorías, arrastrar nodos y retraer/extender vecinos. **El .pptx no ejecuta ZoomCharts por sí solo.** |
 
 Nombre de archivo: se propone el del grafo y siempre se sanea (sin separadores de ruta, caracteres de control ni
 nombres reservados de Windows, máximo 80 caracteres; nunca queda vacío).
@@ -29,7 +29,8 @@ nombres reservados de Windows, máximo 80 caracteres; nunca queda vacío).
   («Se redujo la resolución a …»).
 - **PowerPoint editable:** máximo 400 entidades y 1500 relaciones (más formas harían inmanejable la diapositiva); por
   encima, el botón se desactiva y se propone PowerPoint con imagen o PDF.
-- **PowerPoint interactivo:** el `.pptx` no dibuja ZoomCharts por sí solo. Hay que incrustar el visor `/s` con Web Viewer
+- **PowerPoint interactivo:** el `.pptx` no dibuja ZoomCharts por sí solo. Hay que incrustar el visor `/s` (categorías,
+  arrastre y expandir/contraer) con Web Viewer
   (Insertar → Complementos). Hace falta que A-Link sea alcanzable por HTTPS con un certificado de confianza: el
   autofirmado de `localhost` suele fallar en Office. Si se revoca o caduca el enlace, la diapositiva deja de cargar.
   El token va en el fragmento de la URL (y por tanto en el fichero); no se puede volver a consultar en la API.

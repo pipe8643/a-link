@@ -37,6 +37,12 @@ test.describe("compartir grafo", () => {
     await expect(view.getByRole("heading", { name: "Caso compartido" })).toBeVisible();
     await expect(view.getByText("Ana Pública")).toBeVisible();
     await expect(view.getByText("SECRETO")).toHaveCount(0); // las notas no salen por el enlace
+    await expect(view.getByRole("heading", { name: "Categorías" })).toBeVisible();
+    await expect(view.getByRole("button", { name: /Persona/ })).toHaveAttribute("aria-pressed", "true");
+    await view.getByRole("button", { name: /Persona/ }).click();
+    await expect(view.getByText(/Filtrado:/)).toBeVisible();
+    await view.getByRole("button", { name: "Mostrar todo" }).click();
+    await expect(view.getByRole("button", { name: /Persona/ })).toHaveAttribute("aria-pressed", "true");
     await view.getByRole("button", { name: "Ajustar a la vista" }).click();
     expect(view.url()).toContain("#");
     await visitor.close();

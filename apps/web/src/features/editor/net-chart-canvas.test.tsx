@@ -158,6 +158,16 @@ async function mount(doc = makeDoc(), extra: Partial<Parameters<typeof NetChartC
   return { view, ui, chart: () => charts().at(-1)! };
 }
 
+describe("NetChartCanvas · arrastre", () => {
+  it("readOnly impide mover nodos; nodesMovable lo habilita en el visor compartido", async () => {
+    const locked = await mount(makeDoc(), { readOnly: true });
+    expect(((locked.chart().settings as unknown) as { interaction: { nodesMovable: boolean } }).interaction.nodesMovable).toBe(false);
+    locked.view.unmount();
+    const live = await mount(makeDoc(), { readOnly: true, nodesMovable: true });
+    expect(((live.chart().settings as unknown) as { interaction: { nodesMovable: boolean } }).interaction.nodesMovable).toBe(true);
+  });
+});
+
 describe("NetChartCanvas · ciclo de vida", () => {
   it("monta, pinta un canvas y lo libera al desmontar, sin fugas tras montajes repetidos", async () => {
     for (let i = 0; i < 6; i++) {

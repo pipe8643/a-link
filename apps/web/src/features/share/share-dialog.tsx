@@ -72,7 +72,8 @@ function ShareForm({ graphId, onClose }: { graphId: string; onClose(): void }) {
         <DialogTitle>Compartir grafo</DialogTitle>
         <DialogDescription>
           Quien tenga el enlace ve el grafo <strong>tal como está guardado ahora</strong> (no una foto congelada), sin notas ni
-          campos sensibles. Hace falta que A-Link sea alcanzable por HTTPS. El enlace siempre caduca; puedes revocarlo antes.
+          campos sensibles: puede filtrar categorías, arrastrar entidades y retraer o extender vecinos. Hace falta HTTPS. El
+          enlace siempre caduca; puedes revocarlo antes.
         </DialogDescription>
       </DialogHeader>
 

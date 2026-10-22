@@ -448,7 +448,8 @@ estaban; esta fase añade el flujo usable de «gráfico vivo» en PowerPoint. El
 **no aplica** (A-Link no es un visual de Power BI).
 
 - [x] **Compartir** (botón en el editor): enlace de solo lectura 1/7/30 días, URL con el token en el fragmento
-      (`/s#token`) mostrada **una sola vez**, lista y revocar. La vista pública no incluye notas ni campos sensibles.
+      (`/s#token`) mostrada **una sola vez**, lista y revocar. La vista pública no incluye notas ni campos sensibles;
+      sí permite filtrar categorías, arrastrar nodos y retraer/extender vecinos (ZoomCharts).
 - [x] **PowerPoint interactivo** (`pptx-live`): crea un enlace de 7 días y un `.pptx` con vista previa, hipervínculo e
       instrucciones para el complemento Web Viewer. El archivo no ejecuta ZoomCharts.
 - [x] **CSP:** solo `/s` admite `frame-ancestors *` (sin `X-Frame-Options`); el resto sigue `none` + `DENY`.

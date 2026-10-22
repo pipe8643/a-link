@@ -192,6 +192,25 @@ export function addToFocus(view: ViewState, id: string): ViewState {
 
 export const clearFocus = (view: ViewState): ViewState => (view.focus ? { ...view, focus: null } : view);
 
+export type ExploreAction = "focused" | "expanded" | "collapsed" | "showall" | null;
+
+/**
+ * Exploración al estilo de las demos de ZoomCharts: doble clic en un nodo principal retrae el grafo a él y
+ * sus vecinos; en un vecino con más conexiones, las extiende; otro clic las contrae; en la raíz, vuelve a
+ * verse todo. No cambia el documento, solo la vista.
+ */
+export function toggleExplore(view: ViewState, result: ViewResult, doc: GraphSnapshot, id: string): { view: ViewState; action: ExploreAction } {
+  if (!result.visibleNodeIds.has(id) && !doc.nodes.some((n) => n.id === id)) return { view, action: null };
+  if (!result.focusActive) return { view: focusOn(view, [id]), action: "focused" };
+  if (hiddenNeighbors(doc, view, result, id).length > 0) return { view: expandNode(view, id), action: "expanded" };
+  if (view.focus?.expanded.includes(id)) return { view: collapseNode(view, id), action: "collapsed" };
+  if (view.focus?.roots.includes(id)) {
+    if (view.focus.expanded.length > 0) return { view: { ...view, focus: { roots: view.focus.roots, expanded: [] } }, action: "collapsed" };
+    return { view: { ...view, focus: null }, action: "showall" };
+  }
+  return { view, action: null };
+}
+
 export function toggleInList<T>(list: readonly T[], value: T): T[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 }

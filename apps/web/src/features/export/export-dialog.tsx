@@ -225,8 +225,8 @@ function ExportForm({ onClose, graphName, doc: fullDoc, viewDoc, auraMode = "non
       {options.format === "pptx-live" && (
         <p className="text-xs text-muted-foreground">
           Se crea un enlace de solo lectura (7 días) y un PowerPoint con la vista previa y la URL. El gráfico vivo se ve con el
-          complemento «Web Viewer» de PowerPoint: hace falta que A-Link sea alcanzable por HTTPS con un certificado de
-          confianza. El archivo no contiene ZoomCharts ejecutable. El token del enlace no se puede volver a consultar.
+          complemento «Web Viewer»: puedes filtrar categorías, arrastrar nodos y retraer o extender vecinos con doble clic.
+          Hace falta HTTPS con un certificado de confianza. El archivo no contiene ZoomCharts ejecutable.
         </p>
       )}
       {liveNeedsGraph && (

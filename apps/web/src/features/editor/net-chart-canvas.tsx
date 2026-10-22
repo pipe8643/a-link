@@ -28,8 +28,10 @@ interface Props {
   auraMode?: AuraMode;
   /** URL de la imagen de cada entidad (mismo origen o `blob:`). Debe ser estable: se consulta al crear o actualizar nodos. */
   imageUrl?: ImageUrlResolver;
-  /** Visor de solo lectura: las entidades no se pueden mover (el lienzo sí se puede desplazar, ampliar y seleccionar). */
+  /** Visor sin edición de datos. Por defecto las entidades no se arrastran; el visor compartido puede activar `nodesMovable`. */
   readOnly?: boolean;
+  /** Arrastre de entidades con el diseño dinámico de ZoomCharts. Si no se indica, vale `!readOnly`. */
+  nodesMovable?: boolean;
   /** Doble clic sobre una entidad (en el editor: expandir/contraer sus vecinos). */
   onNodeDoubleClick?(id: string): void;
   /** Se invoca al seleccionar con el ratón/tacto en el lienzo (no al cambiar la selección desde React). */
@@ -238,9 +240,9 @@ export const NetChartCanvas = forwardRef<NetChartCanvasHandle, Props>(function N
           info: { enabled: false },
           area: { style: { fillColor: "transparent" } },
           navigation: { mode: "showall" },
-          layout: { mode: "dynamic", nodeSpacing: 60, initialLayoutMaxTime: 600 },
+          layout: { mode: "dynamic", nodeSpacing: 60, initialLayoutMaxTime: 600, incrementalLayoutMaxTime: 800 },
           interaction: {
-            nodesMovable: !propsRef.current.readOnly,
+            nodesMovable: propsRef.current.nodesMovable ?? !propsRef.current.readOnly,
             panning: { enabled: true },
             zooming: { wheel: true, fingers: true, zoomInOnDoubleClick: false, autoZoomAfterClick: false },
             selection: { enabled: true, nodesSelectable: true, linksSelectable: true, lockNodesOnMove: true, tolerance: 8 },

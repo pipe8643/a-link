@@ -49,6 +49,22 @@ describe("useGraphView", () => {
     expect(ids(result)).toEqual(["A", "B", "C"]);
   });
 
+  it("explore: sin enfoque retrae; luego extiende, contrae y vuelve a mostrar todo", () => {
+    const { result } = setup();
+    let r: ReturnType<typeof result.current.explore> = null;
+    act(() => void (r = result.current.explore(b.id)));
+    expect(r).toBe("focused");
+    expect(ids(result)).toEqual(["A", "B", "C"]);
+    act(() => void (r = result.current.explore(c.id)));
+    expect(r).toBe("expanded");
+    expect(ids(result)).toContain("D");
+    act(() => void (r = result.current.explore(c.id)));
+    expect(r).toBe("collapsed");
+    act(() => void (r = result.current.explore(b.id)));
+    expect(r).toBe("showall");
+    expect(result.current.result.filtered).toBe(false);
+  });
+
   it("doble clic: sin enfoque no hace nada; con enfoque expande y luego contrae", () => {
     const { result } = setup();
     let r: ReturnType<typeof result.current.toggleExpand> = null;
