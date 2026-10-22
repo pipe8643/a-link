@@ -1,0 +1,280 @@
+// Esquema de datos de A-Link. Decisiones documentadas en docs/02-arquitectura.md §4.
+//
+// Base de datos: MySQL 8.4 (>= 8.0.16 por los CHECK). Se usa utf8mb4 y fechas en UTC DateTime(3).
+//
+// Convenciones:
+//  - IDs UUID (CHAR(36)) generados por Prisma en el servidor (nunca por el cliente).
+//  - `ownerId` se rellena SIEMPRE desde la sesión autenticada.
+//  - Nodos y aristas no tienen propietario propio: heredan el del grafo (graph.ownerId). Esto evita
+//    inconsistencias y obliga a resolverlos a través de un grafo autorizado.
+//  - Los tipos de entidad y de relación son String estables validados en la aplicación con el
+//    catálogo de @a-link/shared (el catálogo es configurable, un enum de BD sería rígido).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum ExportFormat {
+  PNG
+  JPEG
+  PDF
+  PPTX
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Char(36)
+  email        String   @unique @db.VarChar(254) // se guarda normalizado en minúsculas
+  displayName  String   @default("") @db.VarChar(120)
+  passwordHash String   @db.VarChar(255) // Argon2id
+  createdAt    DateTime @default(now()) @db.DateTime(3)
+  updatedAt    DateTime @updatedAt @db.DateTime(3)
+
+  sessions      Session[]
+  resetTokens   PasswordResetToken[]
+  folders       Folder[]
+  graphs        Graph[]
+  exports       ExportFile[]
+  images        GraphImage[]
+  shareLinks    ShareLink[]
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+model Session {
+  id               String    @id @default(uuid()) @db.Char(36)
+  userId           String    @db.Char(36)
+  /// HMAC-SHA256 (hex, clave SESSION_SECRET) del identificador de sesión. El valor en claro solo existe en la cookie.
+  tokenHash        String    @unique @db.VarChar(64)
+  createdAt        DateTime  @default(now()) @db.DateTime(3)
+  lastUsedAt       DateTime  @default(now()) @db.DateTime(3)
+  expiresAt        DateTime  @db.DateTime(3) // caducidad deslizante
+  absoluteExpiresAt DateTime @db.DateTime(3) // tope absoluto
+  revokedAt        DateTime? @db.DateTime(3)
+  userAgent        String?   @db.VarChar(255)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Char(36)
+  userId    String    @db.Char(36)
+  /// HMAC-SHA256 (hex, clave SESSION_SECRET) del token enviado al usuario. Un solo uso.
+  tokenHash String    @unique @db.VarChar(64)
+  expiresAt DateTime  @db.DateTime(3)
+  usedAt    DateTime? @db.DateTime(3)
+  createdAt DateTime  @default(now()) @db.DateTime(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+model Folder {
+  id        String   @id @default(uuid()) @db.Char(36)
+  ownerId   String   @db.Char(36)
+  parentId  String?  @db.Char(36)
+  name      String   @db.VarChar(200)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+
+  owner    User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  // Restrict: la API aplica una política explícita (mover o eliminar) antes de borrar una carpeta.
+  parent   Folder?      @relation("FolderTree", fields: [parentId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  children Folder[]     @relation("FolderTree")
+  graphs   Graph[]
+  exports  ExportFile[]
+
+  @@index([ownerId, parentId])
+  @@index([ownerId, name])
+  @@map("folders")
+}
+
+model Graph {
+  id               String    @id @default(uuid()) @db.Char(36)
+  ownerId          String    @db.Char(36)
+  folderId         String?   @db.Char(36)
+  name             String    @db.VarChar(200)
+  description      String    @default("") @db.VarChar(2000)
+  /// Versión del FORMATO de los datos del grafo (migraciones del JSON). No es el contador de concurrencia.
+  graphDataVersion Int       @default(1)
+  /// Contador de concurrencia optimista: se incrementa en cada cambio persistido.
+  revision         Int       @default(1)
+  /// Configuración de presentación (zoom, vista...). Pequeña; no es fuente de verdad del contenido.
+  viewState        Json?
+  createdAt        DateTime  @default(now()) @db.DateTime(3)
+  updatedAt        DateTime  @updatedAt @db.DateTime(3)
+  /// Papelera: borrado lógico. La purga definitiva elimina también los ficheros asociados.
+  deletedAt        DateTime? @db.DateTime(3)
+
+  owner   User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  // Restrict: nunca se borra una carpeta con grafos por accidente.
+  folder  Folder?      @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  nodes   GraphNode[]
+  edges   GraphEdge[]
+  exports ExportFile[]
+  images     GraphImage[]
+  shareLinks ShareLink[]
+
+  @@index([ownerId, deletedAt, updatedAt])
+  @@index([ownerId, folderId])
+  @@index([ownerId, name])
+  @@map("graphs")
+}
+
+model GraphNode {
+  id          String   @id @default(uuid()) @db.Char(36)
+  graphId     String   @db.Char(36)
+  type        String   @db.VarChar(40)
+  label       String   @db.VarChar(200)
+  description String   @default("") @db.VarChar(2000)
+  notes       String   @default("") @db.VarChar(8000)
+  /// Array JSON de strings (MySQL no tiene arrays nativos). La API siempre lo envía ([] por defecto).
+  tags        Json
+  /// Metadatos específicos del tipo; validados con metadataSchemaFor(type) antes de guardar.
+  /// Objeto JSON; la API siempre lo envía ({} por defecto) y un CHECK de BD impone que sea objeto.
+  metadata    Json
+  /// Imagen de la entidad. La BD solo garantiza que existe (y la deja a NULL si se borra); que pertenezca al MISMO grafo lo
+  /// comprueba el servicio al guardar (una FK compuesta con SET NULL anularía también graphId).
+  imageId     String?  @db.Char(36)
+  positionX   Float?
+  positionY   Float?
+  createdAt   DateTime @default(now()) @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @db.DateTime(3)
+
+  graph         Graph       @relation(fields: [graphId], references: [id], onDelete: Cascade)
+  image         GraphImage? @relation(fields: [imageId], references: [id], onDelete: SetNull)
+  outgoingEdges GraphEdge[] @relation("EdgeSource")
+  incomingEdges GraphEdge[] @relation("EdgeTarget")
+
+  // Necesario para la clave foránea compuesta de GraphEdge (misma pertenencia al grafo).
+  @@unique([graphId, id])
+  @@index([graphId, type])
+  @@index([graphId, label])
+  @@index([imageId])
+  @@map("graph_nodes")
+}
+
+model GraphEdge {
+  id               String   @id @default(uuid()) @db.Char(36)
+  graphId          String   @db.Char(36)
+  sourceNodeId     String   @db.Char(36)
+  targetNodeId     String   @db.Char(36)
+  relationshipType String   @db.VarChar(40)
+  label            String   @default("") @db.VarChar(200)
+  /// description, direction, evidenceClass, fechas, fuente, confianza (ver edgeMetadataSchema).
+  metadata    Json
+  createdAt        DateTime @default(now()) @db.DateTime(3)
+  updatedAt        DateTime @updatedAt @db.DateTime(3)
+
+  graph  Graph     @relation(fields: [graphId], references: [id], onDelete: Cascade)
+  // FKs compuestas: origen y destino DEBEN pertenecer al mismo grafo que la arista (lo impone la BD).
+  source GraphNode @relation("EdgeSource", fields: [graphId, sourceNodeId], references: [graphId, id], onDelete: Cascade, onUpdate: NoAction)
+  target GraphNode @relation("EdgeTarget", fields: [graphId, targetNodeId], references: [graphId, id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([graphId])
+  @@index([graphId, sourceNodeId])
+  @@index([graphId, targetNodeId])
+  @@map("graph_edges")
+}
+
+model ExportFile {
+  id         String       @id @default(uuid()) @db.Char(36)
+  ownerId    String       @db.Char(36)
+  graphId    String       @db.Char(36)
+  folderId   String?      @db.Char(36)
+  name       String       @db.VarChar(200)
+  format     ExportFormat
+  /// Clave PRIVADA en el almacenamiento (generada por el servidor). Nunca se expone en la API.
+  storageKey String       @unique @db.VarChar(255)
+  fileSize   Int
+  sha256     String       @db.VarChar(64)
+  createdAt  DateTime     @default(now()) @db.DateTime(3)
+  updatedAt  DateTime     @updatedAt @db.DateTime(3)
+
+  owner  User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  // Cascade: el servicio de purga elimina primero los objetos del almacenamiento.
+  graph  Graph   @relation(fields: [graphId], references: [id], onDelete: Cascade)
+  folder Folder? @relation(fields: [folderId], references: [id], onDelete: Restrict)
+
+  @@index([ownerId, createdAt])
+  @@index([graphId])
+  @@index([ownerId, folderId])
+  @@map("export_files")
+}
+
+/// Imagen de una entidad (retrato/foto ya recortada y reducida por el cliente). Se guarda en la propia base de datos:
+/// pesa decenas de KB, se borra en cascada con el grafo, se duplica con él y entra en las copias de seguridad.
+model GraphImage {
+  id        String   @id @default(uuid()) @db.Char(36)
+  ownerId   String   @db.Char(36)
+  graphId   String   @db.Char(36)
+  /// image/jpeg | image/png | image/webp (detectado por la firma binaria, no por lo que declara el cliente).
+  mime      String   @db.VarChar(20)
+  width     Int
+  height    Int
+  size      Int
+  sha256    String   @db.VarChar(64)
+  /// Contenido. NUNCA se selecciona en listados ni se expone en JSON.
+  data      Bytes
+  createdAt DateTime @default(now()) @db.DateTime(3)
+
+  owner User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  graph Graph       @relation(fields: [graphId], references: [id], onDelete: Cascade)
+  nodes GraphNode[]
+
+  @@index([graphId, createdAt])
+  @@index([ownerId])
+  @@map("graph_images")
+}
+
+/// Enlace de SOLO LECTURA a un grafo (para verlo de forma interactiva, p. ej. dentro de PowerPoint con «Web Viewer»).
+/// El token (256 bits aleatorios) solo se muestra al crearlo; aquí solo se guarda su SHA-256. Caduca y se puede revocar.
+model ShareLink {
+  id           String    @id @default(uuid()) @db.Char(36)
+  ownerId      String    @db.Char(36)
+  graphId      String    @db.Char(36)
+  tokenHash    String    @unique @db.Char(64)
+  expiresAt    DateTime  @db.DateTime(3)
+  revokedAt    DateTime? @db.DateTime(3)
+  createdAt    DateTime  @default(now()) @db.DateTime(3)
+  lastViewedAt DateTime? @db.DateTime(3)
+  viewCount    Int       @default(0)
+
+  owner User  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  graph Graph @relation(fields: [graphId], references: [id], onDelete: Cascade)
+
+  @@index([graphId, createdAt])
+  @@index([ownerId])
+  @@map("share_links")
+}
+model AuditLog {
+  id           String   @id @default(uuid()) @db.Char(36)
+  actorId      String?  @db.Char(36)
+  action       String   @db.VarChar(80)
+  resourceType String   @db.VarChar(40)
+  resourceId   String?  @db.Char(36)
+  timestamp    DateTime @default(now()) @db.DateTime(3)
+  /// Información mínima y NO sensible (nunca contenido de grafos, contraseñas ni tokens).
+  metadata     Json?
+
+  // SetNull: la auditoría sobrevive a la eliminación de la cuenta.
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, timestamp])
+  @@index([resourceType, resourceId])
+  @@index([timestamp])
+  @@map("audit_logs")
+}

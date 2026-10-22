@@ -1,0 +1,34 @@
+# Nada de esto debe entrar jamás en el contexto de construcción (ni, por tanto, en una imagen).
+# Secretos y configuración local
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+certs/
+secrets/
+
+# Dependencias y artefactos: se instalan y construyen DENTRO de la imagen
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+apps/api/src/generated
+
+# Datos privados y resultados de pruebas
+/storage
+apps/*/storage
+**/test-results
+**/playwright-report
+**/.vitest-cache
+coverage
+
+# Control de versiones, editor y documentación
+.git
+.gitignore
+.idea
+docs
+*.log

@@ -1,0 +1,8 @@
+# Los scripts y la configuración que se ejecutan en Linux DEBEN llevar saltos de línea LF (con CRLF el intérprete falla).
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.conf text eol=lf
+docker-compose.yml text eol=lf
+.dockerignore text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf

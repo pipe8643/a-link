@@ -1,0 +1,120 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Tokens de diseño (estilo shadcn/ui). Sin fuentes externas: no se envía ninguna petición a terceros. */
+:root {
+  --radius: 0.625rem;
+  --background: oklch(0.985 0.002 270);
+  --foreground: oklch(0.21 0.02 270);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.02 270);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.02 270);
+  --primary: oklch(0.51 0.23 277);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.955 0.01 270);
+  --secondary-foreground: oklch(0.27 0.03 270);
+  --muted: oklch(0.96 0.006 270);
+  --muted-foreground: oklch(0.47 0.02 270);
+  --accent: oklch(0.945 0.025 277);
+  --accent-foreground: oklch(0.3 0.1 277);
+  --destructive: oklch(0.54 0.22 27);
+  --destructive-foreground: oklch(0.985 0 0);
+  --success: oklch(0.52 0.14 155);
+  --warning: oklch(0.62 0.15 70);
+  --border: oklch(0.9 0.008 270);
+  --input: oklch(0.88 0.01 270);
+  --ring: oklch(0.51 0.23 277);
+  --sidebar: oklch(0.975 0.005 270);
+}
+
+.dark {
+  --background: oklch(0.16 0.015 270);
+  --foreground: oklch(0.96 0.005 270);
+  --card: oklch(0.205 0.017 270);
+  --card-foreground: oklch(0.96 0.005 270);
+  --popover: oklch(0.22 0.017 270);
+  --popover-foreground: oklch(0.96 0.005 270);
+  --primary: oklch(0.68 0.17 277);
+  --primary-foreground: oklch(0.15 0.02 270);
+  --secondary: oklch(0.27 0.02 270);
+  --secondary-foreground: oklch(0.96 0.005 270);
+  --muted: oklch(0.25 0.017 270);
+  --muted-foreground: oklch(0.74 0.015 270);
+  --accent: oklch(0.3 0.05 277);
+  --accent-foreground: oklch(0.95 0.02 277);
+  --destructive: oklch(0.68 0.19 25);
+  --destructive-foreground: oklch(0.15 0.02 270);
+  --success: oklch(0.72 0.15 155);
+  --warning: oklch(0.78 0.14 75);
+  --border: oklch(0.3 0.02 270);
+  --input: oklch(0.34 0.02 270);
+  --ring: oklch(0.68 0.17 277);
+  --sidebar: oklch(0.185 0.016 270);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  /* Foco visible y consistente para teclado */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ZoomCharts no debe descargar su hoja de estilos externa (zc.css): con esta regla la considera ya cargada. */
+.DVSL-suppress-default-styles {
+  color: #abc;
+}

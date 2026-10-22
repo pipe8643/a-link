@@ -1,0 +1,46 @@
+# Dependencias y build
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# Secretos y configuración local (NUNCA versionar)
+.env
+.env.*
+!.env.example
+!.env.docker.example
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+certs/
+secrets/
+
+# Almacenamiento privado de archivos en desarrollo
+/storage/
+/apps/*/storage/
+.storage/
+
+# Pruebas
+playwright-report/
+playwright-report-stack/
+test-results/
+test-results-stack/
+.vitest-cache/
+
+# Prisma
+apps/api/src/generated/
+
+# SO / editor
+.DS_Store
+Thumbs.db
+.idea/
+.cursor/
+.vscode/
+*.log
+*.bak
+*.tmp
+*~

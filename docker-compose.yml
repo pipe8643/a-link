@@ -1,0 +1,137 @@
+# A-Link en contenedores: MySQL + migraciones + API + Nginx (frontend, TLS y proxy).
+#
+#   1. Copia .env.example a .env.docker y rellena la sección «Docker» (secretos ALEATORIOS; el fichero no se versiona).
+#   2. docker compose --env-file .env.docker up -d --build
+#   3. https://localhost:8443  (certificado autofirmado de pruebas salvo que montes uno real: ver docs/10-despliegue.md)
+#
+# Redes: `edge` (Nginx, publicada) y `internal` (db + api + nginx; sin salida a internet ni acceso desde el exterior).
+# Solo se publica el puerto de Nginx. La base de datos y la API NO exponen puertos al equipo.
+
+name: a-link
+
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+
+services:
+  db:
+    <<: *hardening
+    image: mysql:8.4
+    command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Define MYSQL_ROOT_PASSWORD en .env.docker}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-a_link}
+      MYSQL_USER: ${MYSQL_USER:-alink}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Define MYSQL_PASSWORD en .env.docker}
+    volumes:
+      - db-data:/var/lib/mysql
+    networks: [internal]
+    cap_add: [CHOWN, SETUID, SETGID, DAC_OVERRIDE, FOWNER]
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysqladmin ping -h 127.0.0.1 -u $$MYSQL_USER --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  # Trabajo de un solo uso: aplica las migraciones y termina. La API no arranca hasta que acaba bien.
+  migrate:
+    build: { context: ., dockerfile: apps/api/Dockerfile, target: migrate }
+    image: a-link-migrate:local
+    restart: "no"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-alink}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-a_link}
+    depends_on:
+      db: { condition: service_healthy }
+    networks: [internal]
+
+  api:
+    <<: *hardening
+    build: { context: ., dockerfile: apps/api/Dockerfile, target: api }
+    image: a-link-api:local
+    read_only: true
+    tmpfs: ["/tmp"]
+    environment:
+      NODE_ENV: production
+      API_PORT: "3000"
+      API_HOST: 0.0.0.0
+      # Nginx es el único proxy delante de la API.
+      TRUST_PROXY_HOPS: "1"
+      APP_ORIGINS: ${PUBLIC_ORIGIN:?Define PUBLIC_ORIGIN (https://...) en .env.docker}
+      DATABASE_URL: mysql://${MYSQL_USER:-alink}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-a_link}
+      SESSION_SECRET: ${SESSION_SECRET:?Define SESSION_SECRET en .env.docker}
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      STORAGE_LOCAL_DIR: /data/storage
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      MAX_EXPORT_FILE_MB: ${MAX_EXPORT_FILE_MB:-50}
+      EXPORT_QUOTA_MB_PER_USER: ${EXPORT_QUOTA_MB_PER_USER:-512}
+      ARGON2_MEMORY_KIB: ${ARGON2_MEMORY_KIB:-19456}
+      ARGON2_TIME_COST: ${ARGON2_TIME_COST:-2}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
+      AUTH_RATE_LIMIT_PER_MINUTE: ${AUTH_RATE_LIMIT_PER_MINUTE:-10}
+      LOGIN_MAX_ATTEMPTS_PER_IP_EMAIL: ${LOGIN_MAX_ATTEMPTS_PER_IP_EMAIL:-5}
+      LOGIN_MAX_ATTEMPTS_PER_EMAIL: ${LOGIN_MAX_ATTEMPTS_PER_EMAIL:-30}
+    volumes:
+      - api-storage:/data/storage
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    networks: [internal]
+
+  web:
+    <<: *hardening
+    build: { context: ., dockerfile: apps/web/Dockerfile, target: web }
+    image: a-link-web:local
+    read_only: true
+    tmpfs: ["/tmp:uid=101,gid=101,mode=1777,size=256m"]
+    environment:
+      ZOOMCHARTS_LICENSE: ${ZOOMCHARTS_LICENSE:-}
+      ZOOMCHARTS_LICENSE_KEY: ${ZOOMCHARTS_LICENSE_KEY:-}
+    ports:
+      - "${HTTPS_PORT:-8443}:8443"
+    # Para usar un certificado real: descomenta y monta un directorio con tls.crt y tls.key (solo lectura).
+    # volumes:
+    #   - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      api: { condition: service_healthy }
+    networks: [edge, internal]
+
+  # Carga de datos de demostración (opcional): docker compose --env-file .env.docker --profile seed run --rm seed
+  seed:
+    profiles: ["seed"]
+    build: { context: ., dockerfile: apps/api/Dockerfile, target: api }
+    image: a-link-api:local
+    restart: "no"
+    read_only: true
+    tmpfs: ["/tmp"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    command: ["node", "dist/seed/seed-demo.js"]
+    environment:
+      NODE_ENV: production
+      APP_ORIGINS: ${PUBLIC_ORIGIN:?Define PUBLIC_ORIGIN}
+      DATABASE_URL: mysql://${MYSQL_USER:-alink}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-a_link}
+      SESSION_SECRET: ${SESSION_SECRET:?Define SESSION_SECRET}
+      STORAGE_LOCAL_DIR: /data/storage
+      DEMO_USER_EMAIL: ${DEMO_USER_EMAIL:-demo@example.test}
+      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:?Define DEMO_USER_PASSWORD para cargar la demostración}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    networks: [internal]
+
+networks:
+  edge:
+  internal:
+    # Sin salida a internet: la base de datos y la API no necesitan contactar con nadie.
+    internal: true
+
+volumes:
+  db-data:
+  api-storage:
