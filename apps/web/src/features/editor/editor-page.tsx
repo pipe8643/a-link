@@ -17,6 +17,7 @@ import { RelationshipDialog, type RelationshipDialogMode } from "./relationship-
 import { RightPanel } from "./right-panel";
 import { graphImageUrl } from "../images/queries";
 import { ExportDialog } from "../export/export-dialog";
+import { ImportExcelDialog } from "../import/import-dialog";
 import { ShareDialog } from "../share/share-dialog";
 import { useOnExportSaved } from "../exports/queries";
 import { ConflictDialog, SaveStatusIndicator } from "./save-status";
@@ -99,6 +100,7 @@ function Editor({ graphId, name, initialDoc, initialRevision }: { graphId: strin
   const [conflictOpen, setConflictOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const onExportSaved = useOnExportSaved();
   // El aviso se abre solo cuando aparece el conflicto (y se puede reabrir desde la cabecera).
   useEffect(() => {
@@ -297,6 +299,7 @@ function Editor({ graphId, name, initialDoc, initialRevision }: { graphId: strin
             onDelete={deleteSelection}
             onExport={() => setExportOpen(true)}
             onShare={() => setShareOpen(true)}
+            onImportExcel={() => setImportOpen(true)}
           />
           <p role="status" aria-live="polite" className={cn("border-b bg-primary/10 px-3 py-1.5 text-sm", !connectHint && "sr-only")}>
             {connectHint ?? ""}
@@ -333,7 +336,7 @@ function Editor({ graphId, name, initialDoc, initialRevision }: { graphId: strin
             )}
             {doc.nodes.length === 0 && canvasStatus !== "error" && (
               <p className="pointer-events-none absolute inset-x-0 top-1/3 px-6 text-center text-sm text-muted-foreground">
-                El lienzo está vacío. Añade una entidad desde la paleta de la izquierda.
+                El lienzo está vacío. Añade una entidad desde la paleta o importa un Excel.
               </p>
             )}
           </div>
@@ -356,6 +359,18 @@ function Editor({ graphId, name, initialDoc, initialRevision }: { graphId: strin
       </div>
 
       <ExportDialog open={exportOpen} onClose={() => setExportOpen(false)} graphName={name} doc={doc} viewDoc={graphView.result.doc} auraMode={graphView.auraMode} dark={dark} canvas={canvasRef} graphId={graphId} onSaved={onExportSaved} />
+      <ImportExcelDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        occupied={{ nodes: doc.nodes.length, edges: doc.edges.length }}
+        onImport={(imported) => {
+          editor.importDoc(imported);
+          window.setTimeout(() => {
+            canvasRef.current?.reorganize();
+            canvasRef.current?.fit();
+          }, 80);
+        }}
+      />
       <ShareDialog open={shareOpen} onClose={() => setShareOpen(false)} graphId={graphId} />
       <ConflictDialog open={conflictOpen} onClose={() => setConflictOpen(false)} onReload={reloadFromServer} onOverwrite={overwriteServer} />
 

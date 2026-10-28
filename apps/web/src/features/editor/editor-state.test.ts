@@ -119,6 +119,16 @@ describe("editorReducer", () => {
     expect(run(s, { type: "addNode", node: mkNode("de más") })).toBe(s);
   });
 
+  it("importar añade entidades y relaciones en un solo paso", () => {
+    const a = mkNode("Ana");
+    const b = mkNode("Línea", "phone");
+    const e = mkEdge(a, b);
+    const s = run(initialState(), { type: "importDoc", nodes: [a, b], edges: [e] });
+    expect(s.doc.nodes).toHaveLength(2);
+    expect(s.doc.edges).toHaveLength(1);
+    expect(s.version).toBe(1);
+  });
+
   it("cargar reemplaza el documento y vacía el historial", () => {
     const s = run(initialState(), { type: "addNode", node: mkNode("A") });
     const loaded = run(s, { type: "load", doc: { nodes: [mkNode("X")], edges: [] } });

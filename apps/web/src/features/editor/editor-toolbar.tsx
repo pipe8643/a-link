@@ -1,4 +1,4 @@
-import { Download, Link2, Maximize, Redo2, Share2, Shuffle, Trash2, Undo2, ZoomIn, ZoomOut } from "lucide-react";
+import { Download, FileSpreadsheet, Link2, Maximize, Redo2, Share2, Shuffle, Trash2, Undo2, ZoomIn, ZoomOut } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import type { NetChartCanvasHandle } from "./net-chart-canvas";
@@ -14,6 +14,7 @@ interface Props {
   onDelete(): void;
   onExport(): void;
   onShare(): void;
+  onImportExcel(): void;
 }
 
 function Tool({ label, onClick, disabled, pressed, children }: { label: string; onClick(): void; disabled?: boolean; pressed?: boolean; children: ReactNode }) {
@@ -25,7 +26,7 @@ function Tool({ label, onClick, disabled, pressed, children }: { label: string; 
 }
 
 /** Barra de herramientas del lienzo. Cada botón tiene nombre accesible; el estado activo se anuncia con aria-pressed. */
-export function EditorToolbar({ editor, canvas, canvasReady, connecting, onToggleConnect, onNewRelationship, onDelete, onExport, onShare }: Props) {
+export function EditorToolbar({ editor, canvas, canvasReady, connecting, onToggleConnect, onNewRelationship, onDelete, onExport, onShare, onImportExcel }: Props) {
   const hasSelection = editor.selection.nodeIds.length + editor.selection.edgeIds.length > 0;
   return (
     <div role="toolbar" aria-label="Herramientas del editor" className="flex flex-wrap items-center gap-1.5 border-b bg-background p-2">
@@ -61,6 +62,10 @@ export function EditorToolbar({ editor, canvas, canvasReady, connecting, onToggl
         <span className="hidden sm:inline">Eliminar</span>
       </Button>
       <span className="mx-1 h-6 w-px bg-border" aria-hidden="true" />
+      <Button type="button" variant="outline" size="sm" onClick={onImportExcel}>
+        <FileSpreadsheet aria-hidden="true" />
+        <span className="hidden sm:inline">Importar Excel</span>
+      </Button>
       <Button type="button" variant="outline" size="sm" onClick={onShare}>
         <Share2 aria-hidden="true" />
         Compartir…

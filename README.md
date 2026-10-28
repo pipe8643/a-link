@@ -51,4 +51,5 @@ npm run build
 | `docs/09-licencias-y-exportaciones.md` | ZoomCharts y formatos de exportación |
 | `docs/10-despliegue.md` | Docker, TLS, cabeceras, operación |
 | `docs/11-seguridad.md` | OWASP Top 10 2025, ISO 27001 (técnico), SQLi y XSS |
+| `docs/12-importar-excel.md` | Plantilla y columnas para graficar desde Excel |
 | `SECURITY.md` | Cómo reportar un problema de seguridad |

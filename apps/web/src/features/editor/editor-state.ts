@@ -28,6 +28,7 @@ export type EditorAction =
   | { type: "addEdge"; edge: GraphEdgeData }
   | { type: "updateEdge"; edge: GraphEdgeData }
   | { type: "removeEdges"; ids: readonly string[] }
+  | { type: "importDoc"; nodes: GraphNodeData[]; edges: GraphEdgeData[] }
   | { type: "undo" }
   | { type: "redo" };
 
@@ -110,6 +111,22 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const ids = new Set(action.ids);
       if (!doc.edges.some((e) => ids.has(e.id))) return state;
       return commit(state, { ...doc, edges: doc.edges.filter((e) => !ids.has(e.id)) });
+    }
+
+    case "importDoc": {
+      if (action.nodes.length === 0 && action.edges.length === 0) return state;
+      if (doc.nodes.length + action.nodes.length > GRAPH_LIMITS.maxNodes) return state;
+      if (doc.edges.length + action.edges.length > GRAPH_LIMITS.maxEdges) return state;
+      const nodeIds = new Set(doc.nodes.map((n) => n.id));
+      for (const n of action.nodes) {
+        if (nodeIds.has(n.id)) return state;
+        nodeIds.add(n.id);
+      }
+      for (const e of action.edges) {
+        if (e.sourceId === e.targetId || !nodeIds.has(e.sourceId) || !nodeIds.has(e.targetId)) return state;
+        if (doc.edges.some((x) => x.id === e.id) || action.edges.filter((x) => x.id === e.id).length > 1) return state;
+      }
+      return commit(state, { nodes: [...doc.nodes, ...action.nodes], edges: [...doc.edges, ...action.edges] });
     }
 
     case "undo": {

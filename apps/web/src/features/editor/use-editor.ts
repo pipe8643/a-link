@@ -73,6 +73,10 @@ export function useEditor(initialDoc?: GraphSnapshot) {
       dispatch({ type: "load", doc: next });
       setSelection(NONE);
     }, []),
+    /** Añade un bloque importado (p. ej. desde Excel) en un solo paso de historial. */
+    importDoc: useCallback((next: GraphSnapshot) => {
+      dispatch({ type: "importDoc", nodes: next.nodes, edges: next.edges });
+    }, []),
     undo: useCallback(() => dispatch({ type: "undo" }), []),
     redo: useCallback(() => dispatch({ type: "redo" }), []),
     canUndo: canUndo(state),
