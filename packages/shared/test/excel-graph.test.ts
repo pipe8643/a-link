@@ -1,85 +1,101 @@
 import { describe, expect, it } from "vitest";
 import {
-  EXCEL_ENTITY_HEADERS,
+  EXCEL_GRAPH_HEADERS,
   EXCEL_SHEETS,
-  excelTemplateTables,
+  excelTemplateSheet,
   foldHeader,
-  graphFromExcelTables,
+  graphFromExcelSheet,
   type ExcelTable,
 } from "../src/excel-graph.js";
 
 const table = (headers: string[], rows: string[][]): ExcelTable => ({ headers, rows });
+const H = [...EXCEL_GRAPH_HEADERS];
 
-describe("graphFromExcelTables", () => {
+describe("graphFromExcelSheet", () => {
   it("convierte la plantilla de ejemplo en un grafo válido", () => {
-    const { entities, relations } = excelTemplateTables();
-    const r = graphFromExcelTables(entities, relations);
+    const spec = excelTemplateSheet();
+    const r = graphFromExcelSheet({ headers: spec.headers, rows: spec.rows });
     expect(r.ok, r.ok ? "" : JSON.stringify(r.errors)).toBe(true);
     if (!r.ok) return;
     expect(r.value.nodes.map((n) => n.label).sort()).toEqual(["+34 600 000 000", "Acme SL", "Ana Pérez"]);
-    expect(r.value.nodes.find((n) => n.type === "phone")?.metadata.number).toBe("+34 600 000 000");
     expect(r.value.edges).toHaveLength(2);
     expect(r.value.edges.map((e) => e.relationshipType).sort()).toEqual(["commercial", "contact"]);
   });
 
-  it("acepta identificadores internos y etiquetas en español", () => {
-    const entities = table(
-      ["ref", "tipo", "nombre"],
-      [
-        ["a", "person", "Ana"],
-        ["b", "Teléfono", "Móvil"],
-      ],
+  it("repite la ref para añadir más enlaces y acepta nombres en español", () => {
+    const r = graphFromExcelSheet(
+      table(H, [
+        ["a", "person", "Ana", "", "", "b", "Contacto", "", "Dato registrado", "ambos"],
+        ["a", "", "", "", "", "c", "Familiar", "", "", ""],
+        ["b", "Teléfono", "Móvil", "", "", "", "", "", "", ""],
+        ["c", "Persona", "Luis", "", "", "", "", "", "", ""],
+      ]),
     );
-    const relations = table(
-      ["origen", "destino", "tipo", "naturaleza", "direccion"],
-      [["a", "b", "Contacto", "Dato registrado", "ambos"]],
-    );
-    const r = graphFromExcelTables(entities, relations);
-    expect(r.ok).toBe(true);
+    expect(r.ok, r.ok ? "" : JSON.stringify(r.errors)).toBe(true);
     if (!r.ok) return;
-    expect(r.value.edges[0]).toMatchObject({ relationshipType: "contact" });
+    expect(r.value.nodes).toHaveLength(3);
+    expect(r.value.edges).toHaveLength(2);
     expect(r.value.edges[0]?.metadata).toMatchObject({ evidenceClass: "recorded", direction: "both" });
   });
 
-  it("rechaza javascript: en URL, refs duplicadas y relaciones huérfanas", () => {
-    const entities = table(
-      ["ref", "tipo", "nombre", "profileUrl"],
-      [
-        ["a", "Red social", "Perfil", "javascript:alert(1)"],
-        ["a", "Persona", "Otra", ""],
-      ],
+  it("hereda la ref de la fila anterior si se deja vacía", () => {
+    const r = graphFromExcelSheet(
+      table(H, [
+        ["ana", "Persona", "Ana", "", "", "tel1", "Contacto", "", "", ""],
+        ["", "", "", "", "", "acme", "Relación comercial", "", "", ""],
+        ["tel1", "Teléfono", "Tel", "", "", "", "", "", "", ""],
+        ["acme", "Organización o empresa", "Acme", "", "", "", "", "", "", ""],
+      ]),
     );
-    const relations = table(
-      ["origen", "destino", "tipo"],
-      [["a", "no-existe", "Contacto"]],
-    );
-    const r = graphFromExcelTables(entities, relations);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.edges).toHaveLength(2);
+  });
+
+  it("rechaza un enlace a una ref que no existe", () => {
+    const r = graphFromExcelSheet(table(["ref", "tipo", "nombre", "enlace_con", "tipo_enlace"], [["a", "Persona", "Ana", "fantasma", "Contacto"]]));
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.errors.some((e) => e.field === "ref")).toBe(true);
-    expect(r.errors.some((e) => e.sheet === EXCEL_SHEETS.relations)).toBe(true);
+    expect(r.errors.some((e) => e.field === "enlace_con" && e.sheet === EXCEL_SHEETS.graph)).toBe(true);
   });
 
   it("trata SQL/HTML como texto en el nombre", () => {
-    const entities = table(["ref", "tipo", "nombre"], [["x", "Persona", "<script>alert(1)</script>"]]);
-    const r = graphFromExcelTables(entities, { headers: [], rows: [] });
+    const r = graphFromExcelSheet(table(["ref", "tipo", "nombre"], [["x", "Persona", "<script>alert(1)</script>"]]));
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.value.nodes[0]?.label).toBe("<script>alert(1)</script>");
   });
 
   it("exige las columnas mínimas", () => {
-    const r = graphFromExcelTables(table(["foo"], [["1"]]), { headers: [], rows: [] });
+    const r = graphFromExcelSheet(table(["foo"], [["1"]]));
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.errors.map((e) => e.field).sort()).toEqual(["foo", "nombre", "ref", "tipo"]);
+    expect(r.errors.map((e) => e.field).sort()).toEqual(["nombre", "ref", "tipo"]);
+  });
+
+  it("si el nombre está vacío usa la ref", () => {
+    const r = graphFromExcelSheet(table(["ref", "tipo", "nombre"], [["320550987", "Teléfono", ""]]));
+    expect(r.ok, r.ok ? "" : JSON.stringify(r.errors)).toBe(true);
+    if (!r.ok) return;
+    expect(r.value.nodes[0]?.label).toBe("320550987");
+  });
+
+  it("numera las filas a partir de la cabecera real (fila 2 si hay ayuda encima)", () => {
+    const r = graphFromExcelSheet({
+      headers: ["ref", "tipo", "nombre"],
+      rows: [["", "Persona", "Ana"]],
+      headerRow: 2,
+    });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.errors[0]?.row).toBe(3);
   });
 });
 
 describe("plantilla", () => {
-  it("incluye las columnas estables y tipos documentados", () => {
-    expect(EXCEL_ENTITY_HEADERS[0]).toBe("ref");
-    expect(excelTemplateTables().instructions.some((row) => row[0]?.includes("Persona"))).toBe(true);
+  it("tiene pocas columnas y ayuda breve", () => {
+    expect(EXCEL_GRAPH_HEADERS).toHaveLength(10);
+    expect(excelTemplateSheet().help.includes("enlace_con")).toBe(true);
     expect(foldHeader("origen→destino")).toBe("origendestino");
   });
 });

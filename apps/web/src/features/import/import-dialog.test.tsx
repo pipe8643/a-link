@@ -30,7 +30,7 @@ describe("ImportExcelDialog", () => {
   it("describe la estructura y permite descargar la plantilla", async () => {
     mocks.buildExcelTemplate.mockResolvedValue(new Uint8Array([0x50, 0x4b, 0x03, 0x04]));
     setup();
-    expect(screen.getByText(/hojas «Entidades» y «Relaciones»/)).toBeInTheDocument();
+    expect(screen.getByText(/Una sola hoja «Grafo»/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Descargar plantilla" }));
     await waitFor(() => expect(mocks.downloadBytes).toHaveBeenCalled());
   });
@@ -38,13 +38,13 @@ describe("ImportExcelDialog", () => {
   it("muestra los errores de fila si el Excel no es válido", async () => {
     mocks.importExcelFile.mockResolvedValue({
       ok: false,
-      errors: [{ sheet: "Entidades", row: 2, field: "tipo", message: "Tipo de entidad no válido." }],
+      errors: [{ sheet: "Grafo", row: 3, field: "tipo", message: "Elige un tipo de la lista (Persona, Teléfono…)." }],
     });
     const { onImport } = setup();
     const input = screen.getByLabelText("Archivo Excel");
     const file = new File(["PK"], "datos.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     fireEvent.change(input, { target: { files: [file] } });
-    expect(await screen.findByText(/Entidades fila 2/)).toBeInTheDocument();
+    expect(await screen.findByText(/Grafo fila 3/)).toBeInTheDocument();
     expect(onImport).not.toHaveBeenCalled();
   });
 });

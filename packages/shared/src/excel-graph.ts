@@ -18,14 +18,37 @@ export const EXCEL_IMPORT_LIMITS = {
 } as const;
 
 export const EXCEL_SHEETS = {
-  entities: "Entidades",
-  relations: "Relaciones",
-  instructions: "Instrucciones",
+  graph: "Grafo",
+  lists: "Listas",
+} as const;
+
+/** Columnas de la plantilla (una sola hoja). Los desplegables cubren tipo, tipo_enlace, naturaleza y direccion. */
+export const EXCEL_GRAPH_HEADERS = [
+  "ref",
+  "tipo",
+  "nombre",
+  "descripcion",
+  "etiquetas",
+  "enlace_con",
+  "tipo_enlace",
+  "etiqueta_enlace",
+  "naturaleza",
+  "direccion",
+] as const;
+
+export const EXCEL_HELP_TEXT =
+  "Cómo rellenar: 1) En cada fila, una entidad: ref corta (ana, tel1), tipo (lista) y nombre. 2) Para unirla a otra, escribe esa ref en enlace_con y elige el tipo de enlace. 3) Si tiene varios enlaces, copia la ref en la fila de abajo y cambia solo el enlace. No borres esta fila ni la de cabeceras.";
+
+export const EXCEL_DROPDOWN_PROMPTS = {
+  tipo: "Elige el tipo de entidad.",
+  tipo_enlace: "Elige cómo se relacionan.",
+  naturaleza: "Hipótesis, dato registrado u observación.",
+  direccion: "Hacia el enlace, sin flecha, o en ambos sentidos.",
 } as const;
 
 export interface ExcelIssue {
   sheet: string;
-  /** Fila de Excel (1 = cabecera). 0 si el problema es del fichero entero. */
+  /** Fila de Excel (1 = primera fila del fichero). 0 si el problema es del fichero entero. */
   row: number;
   field: string;
   message: string;
@@ -34,6 +57,8 @@ export interface ExcelIssue {
 export interface ExcelTable {
   headers: string[];
   rows: string[][];
+  /** Fila de Excel (1 = primera) donde está la cabecera. Por defecto 1. */
+  headerRow?: number;
 }
 
 export type ExcelImportResult = { ok: true; value: GraphSnapshot } | { ok: false; errors: ExcelIssue[] };
@@ -48,42 +73,29 @@ export function foldHeader(value: string): string {
     .replace(/[^a-z0-9]+/g, "");
 }
 
-const CORE_ALIASES: Record<"ref" | "tipo" | "nombre" | "descripcion" | "notas" | "etiquetas", readonly string[]> = {
+const COL_ALIASES: Record<(typeof EXCEL_GRAPH_HEADERS)[number], readonly string[]> = {
   ref: ["ref", "id", "clave", "referencia"],
   tipo: ["tipo", "type"],
-  nombre: ["nombre", "name", "etiqueta", "label"],
-  descripcion: ["descripcion", "description"],
-  notas: ["notas", "notes"],
+  nombre: ["nombre", "name", "label"],
+  descripcion: ["descripcion", "description", "notas", "notes"],
   etiquetas: ["etiquetas", "tags"],
-};
-
-const REL_ALIASES: Record<
-  "origen" | "destino" | "tipo" | "etiqueta" | "naturaleza" | "direccion" | "inicio" | "fin" | "fuente" | "confianza" | "descripcion",
-  readonly string[]
-> = {
-  origen: ["origen", "from", "source", "fuenteentidad"],
-  destino: ["destino", "to", "target"],
-  tipo: ["tipo", "type"],
-  etiqueta: ["etiqueta", "label", "nombre"],
+  enlace_con: ["enlacecon", "relacionadocon", "destino", "con", "hacia"],
+  tipo_enlace: ["tipoenlace", "tiporelacion", "relacion"],
+  etiqueta_enlace: ["etiquetaenlace", "etiqueta", "rotulo"],
   naturaleza: ["naturaleza", "evidencia", "evidence", "evidenceclass"],
   direccion: ["direccion", "direction"],
-  inicio: ["inicio", "start", "startdate", "fechaInicio"],
-  fin: ["fin", "end", "enddate", "fechaFin"],
-  fuente: ["fuente", "source", "origenDato"],
-  confianza: ["confianza", "confidence"],
-  descripcion: ["descripcion", "description"],
 };
 
-function aliasIndex(aliases: Record<string, readonly string[]>): Map<string, string> {
+function aliasIndex(): Map<string, string> {
   const map = new Map<string, string>();
-  for (const [canonical, names] of Object.entries(aliases)) {
+  for (const [canonical, names] of Object.entries(COL_ALIASES)) {
+    map.set(foldHeader(canonical), canonical);
     for (const name of names) map.set(foldHeader(name), canonical);
   }
   return map;
 }
 
-const ENTITY_CORE = aliasIndex(CORE_ALIASES);
-const RELATION_CORE = aliasIndex(REL_ALIASES);
+const COL_BY_FOLD = aliasIndex();
 
 const TYPE_BY_FOLD = new Map<string, EntityTypeId>();
 for (const id of ENTITY_TYPE_IDS) {
@@ -118,22 +130,13 @@ const DIRECTION_BY_FOLD = new Map<string, EdgeDirection>([
   ["bidireccional", "both"],
 ]);
 
-/** Cabecera de metadatos: clave del campo o su etiqueta en español → `field.key`. */
-function metadataKeyByFold(): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const def of Object.values(ENTITY_CATALOG)) {
-    for (const field of def.fields) {
-      map.set(foldHeader(field.key), field.key);
-      map.set(foldHeader(field.label), field.key);
-    }
-  }
-  return map;
-}
+export const EXCEL_ENTITY_TYPE_LABELS = ENTITY_TYPE_IDS.map((id) => ENTITY_CATALOG[id].name);
+export const EXCEL_RELATION_TYPE_LABELS = RELATIONSHIP_TYPES.map((id) => RELATIONSHIP_LABELS_ES[id]);
+export const EXCEL_EVIDENCE_LABELS = EVIDENCE_CLASSES.map((id) => EVIDENCE_LABELS_ES[id]);
+export const EXCEL_DIRECTION_LABELS = ["origen→destino", "sin dirección", "ambos"] as const;
 
-const META_BY_FOLD = metadataKeyByFold();
-
-function colOf(headers: string[], lookup: Map<string, string>, canonical: string): number {
-  return headers.findIndex((_, i) => lookup.get(foldHeader(headers[i] ?? "")) === canonical);
+function colOf(headers: string[], canonical: string): number {
+  return headers.findIndex((_, i) => COL_BY_FOLD.get(foldHeader(headers[i] ?? "")) === canonical);
 }
 
 function cell(row: string[], index: number): string {
@@ -142,318 +145,210 @@ function cell(row: string[], index: number): string {
 
 function parseTags(raw: string): string[] {
   if (raw === "") return [];
-  const parts = raw
-    .split(/[,;]/)
-    .map((t) => t.trim())
-    .filter(Boolean);
-  return [...new Set(parts)];
+  return [...new Set(raw.split(/[,;]/).map((t) => t.trim()).filter(Boolean))];
 }
 
-function resolveSelect(type: EntityTypeId, key: string, raw: string): string {
-  const field = ENTITY_CATALOG[type].fields.find((f) => f.key === key);
-  if (!field?.options) return raw;
-  const folded = foldHeader(raw);
-  const hit = field.options.find((o) => foldHeader(o.value) === folded || foldHeader(o.label) === folded);
-  return hit?.value ?? raw;
-}
-
-function issue(sheet: string, row: number, field: string, message: string): ExcelIssue {
-  return { sheet, row, field, message };
+function issue(row: number, field: string, message: string): ExcelIssue {
+  return { sheet: EXCEL_SHEETS.graph, row, field, message };
 }
 
 /**
- * Convierte las hojas Entidades y Relaciones en un documento de grafo.
- * Cada `ref` se traduce a un UUID nuevo; las relaciones apuntan a esas refs.
+ * Una sola hoja: cada fila declara (o reutiliza) una entidad y, si «enlace_con» tiene valor, un enlace.
+ * La misma `ref` en varias filas añade más enlaces sin duplicar el nodo.
  */
-export function graphFromExcelTables(
-  entities: ExcelTable,
-  relations: ExcelTable,
-  occupied: { nodes: number; edges: number } = { nodes: 0, edges: 0 },
-): ExcelImportResult {
+export function graphFromExcelSheet(table: ExcelTable, occupied: { nodes: number; edges: number } = { nodes: 0, edges: 0 }): ExcelImportResult {
   const errors: ExcelIssue[] = [];
   const push = (e: ExcelIssue) => {
     if (errors.length < EXCEL_IMPORT_LIMITS.maxIssues) errors.push(e);
   };
 
-  const refCol = colOf(entities.headers, ENTITY_CORE, "ref");
-  const tipoCol = colOf(entities.headers, ENTITY_CORE, "tipo");
-  const nombreCol = colOf(entities.headers, ENTITY_CORE, "nombre");
-  if (refCol < 0) push(issue(EXCEL_SHEETS.entities, 1, "ref", "Falta la columna «ref»."));
-  if (tipoCol < 0) push(issue(EXCEL_SHEETS.entities, 1, "tipo", "Falta la columna «tipo»."));
-  if (nombreCol < 0) push(issue(EXCEL_SHEETS.entities, 1, "nombre", "Falta la columna «nombre»."));
+  const headerRow = table.headerRow ?? 1;
+  const refCol = colOf(table.headers, "ref");
+  const tipoCol = colOf(table.headers, "tipo");
+  const nombreCol = colOf(table.headers, "nombre");
+  if (refCol < 0) push(issue(headerRow, "ref", "Falta la columna «ref»."));
+  if (tipoCol < 0) push(issue(headerRow, "tipo", "Falta la columna «tipo»."));
+  if (nombreCol < 0) push(issue(headerRow, "nombre", "Falta la columna «nombre»."));
 
-  const descCol = colOf(entities.headers, ENTITY_CORE, "descripcion");
-  const notasCol = colOf(entities.headers, ENTITY_CORE, "notas");
-  const tagsCol = colOf(entities.headers, ENTITY_CORE, "etiquetas");
+  const descCol = colOf(table.headers, "descripcion");
+  const tagsCol = colOf(table.headers, "etiquetas");
+  const linkCol = colOf(table.headers, "enlace_con");
+  const linkTypeCol = colOf(table.headers, "tipo_enlace");
+  const linkLabelCol = colOf(table.headers, "etiqueta_enlace");
+  const natCol = colOf(table.headers, "naturaleza");
+  const dirCol = colOf(table.headers, "direccion");
 
-  const metaCols: Array<{ index: number; key: string; header: string }> = [];
-  const seenMeta = new Set<string>();
-  for (let i = 0; i < entities.headers.length; i++) {
-    const header = entities.headers[i] ?? "";
-    if (header.trim() === "") continue;
-    const folded = foldHeader(header);
-    if (ENTITY_CORE.has(folded)) continue;
-    const key = META_BY_FOLD.get(folded);
-    if (!key) {
-      const used = entities.rows.some((r) => cell(r, i) !== "");
-      if (used) push(issue(EXCEL_SHEETS.entities, 1, header, "Columna no reconocida."));
-      continue;
+  type Pending = { excelRow: number; tipo: string; nombre: string; descripcion: string; etiquetas: string };
+  const firstRow = new Map<string, Pending>();
+  const order: string[] = [];
+  const links: Array<{ excelRow: number; from: string; to: string; tipo: string; etiqueta: string; naturaleza: string; direccion: string }> = [];
+
+  let prevRef = "";
+  table.rows.forEach((row, i) => {
+    const excelRow = headerRow + 1 + i;
+    let ref = cell(row, refCol);
+    const tipoRaw = cell(row, tipoCol);
+    const nombre = cell(row, nombreCol);
+    const enlace = cell(row, linkCol);
+    const tipoEnlace = cell(row, linkTypeCol);
+    if (ref === "" && tipoRaw === "" && nombre === "" && enlace === "" && tipoEnlace === "") return;
+    if (ref === "") ref = prevRef;
+    if (ref === "") {
+      push(issue(excelRow, "ref", "Indica una ref (por ejemplo ana)."));
+      return;
     }
-    if (seenMeta.has(key)) continue;
-    seenMeta.add(key);
-    metaCols.push({ index: i, key, header });
-  }
+    prevRef = ref;
+    const refKey = foldHeader(ref);
+    const existing = firstRow.get(refKey);
+    if (!existing) {
+      firstRow.set(refKey, {
+        excelRow,
+        tipo: tipoRaw,
+        nombre: nombre || ref,
+        descripcion: cell(row, descCol),
+        etiquetas: cell(row, tagsCol),
+      });
+      order.push(refKey);
+    } else if (tipoRaw && foldHeader(tipoRaw) !== foldHeader(existing.tipo)) {
+      push(issue(excelRow, "tipo", "Esta ref ya tiene otro tipo. Déjalo vacío si solo añades un enlace."));
+    } else if (nombre && nombre !== existing.nombre) {
+      push(issue(excelRow, "nombre", "Esta ref ya tiene otro nombre. Déjalo vacío si solo añades un enlace."));
+    }
+    if (enlace === "" && tipoEnlace === "") return;
+    if (enlace === "") {
+      push(issue(excelRow, "enlace_con", "Indica la ref de la otra entidad."));
+      return;
+    }
+    if (tipoEnlace === "") {
+      push(issue(excelRow, "tipo_enlace", "Elige el tipo de enlace."));
+      return;
+    }
+    links.push({
+      excelRow,
+      from: refKey,
+      to: foldHeader(enlace),
+      tipo: tipoEnlace,
+      etiqueta: cell(row, linkLabelCol),
+      naturaleza: cell(row, natCol),
+      direccion: cell(row, dirCol),
+    });
+  });
 
-  if (entities.rows.length > GRAPH_LIMITS.maxNodes) {
-    push(issue(EXCEL_SHEETS.entities, 0, "filas", `Máximo ${GRAPH_LIMITS.maxNodes} entidades.`));
+  if (order.length > GRAPH_LIMITS.maxNodes || occupied.nodes + order.length > GRAPH_LIMITS.maxNodes) {
+    push(issue(0, "filas", `El grafo no admite más entidades (máximo ${GRAPH_LIMITS.maxNodes}).`));
   }
-  if (occupied.nodes + entities.rows.length > GRAPH_LIMITS.maxNodes) {
-    push(issue(EXCEL_SHEETS.entities, 0, "filas", `El grafo no admite más entidades (máximo ${GRAPH_LIMITS.maxNodes}).`));
+  if (links.length > GRAPH_LIMITS.maxEdges || occupied.edges + links.length > GRAPH_LIMITS.maxEdges) {
+    push(issue(0, "filas", `El grafo no admite más relaciones (máximo ${GRAPH_LIMITS.maxEdges}).`));
   }
 
   const refs = new Map<string, string>();
-  const seenRefs = new Set<string>();
   const nodes: GraphSnapshot["nodes"] = [];
-
-  entities.rows.forEach((row, i) => {
-    const excelRow = i + 2;
-    const ref = cell(row, refCol);
-    const tipoRaw = cell(row, tipoCol);
-    const nombre = cell(row, nombreCol);
-    if (ref === "" && tipoRaw === "" && nombre === "") return;
-    if (ref === "") {
-      push(issue(EXCEL_SHEETS.entities, excelRow, "ref", "La referencia es obligatoria."));
-      return;
-    }
-    const refKey = foldHeader(ref);
-    if (seenRefs.has(refKey)) {
-      push(issue(EXCEL_SHEETS.entities, excelRow, "ref", "Referencia duplicada."));
-      return;
-    }
-    seenRefs.add(refKey);
-    const type = TYPE_BY_FOLD.get(foldHeader(tipoRaw));
+  for (const refKey of order) {
+    const row = firstRow.get(refKey)!;
+    const type = TYPE_BY_FOLD.get(foldHeader(row.tipo));
     if (!type) {
-      push(issue(EXCEL_SHEETS.entities, excelRow, "tipo", "Tipo de entidad no válido."));
-      return;
-    }
-    const allowed = new Set(ENTITY_CATALOG[type].fields.map((f) => f.key));
-    const metadata: Record<string, string> = {};
-    for (const col of metaCols) {
-      const value = cell(row, col.index);
-      if (value === "") continue;
-      if (!allowed.has(col.key)) {
-        push(issue(EXCEL_SHEETS.entities, excelRow, col.header, `Este campo no aplica al tipo ${ENTITY_CATALOG[type].name}.`));
-        continue;
-      }
-      metadata[col.key] = resolveSelect(type, col.key, value);
+      push(issue(row.excelRow, "tipo", "Elige un tipo de la lista (Persona, Teléfono…)."));
+      continue;
     }
     const parsed = nodeInputSchema.safeParse({
       id: crypto.randomUUID(),
       type,
-      label: nombre,
-      description: cell(row, descCol),
-      notes: cell(row, notasCol),
-      tags: parseTags(cell(row, tagsCol)),
-      metadata,
+      label: row.nombre,
+      description: row.descripcion,
+      notes: "",
+      tags: parseTags(row.etiquetas),
+      metadata: {},
       imageId: null,
       positionX: null,
       positionY: null,
     });
     if (!parsed.success) {
       const first = parsed.error.issues[0];
-      const field = first?.path.map(String).join(".") || "nombre";
-      push(issue(EXCEL_SHEETS.entities, excelRow, field, first?.message ?? "Fila no válida."));
-      return;
+      push(issue(row.excelRow, first?.path.map(String).join(".") || "nombre", first?.message ?? "Fila no válida."));
+      continue;
     }
     refs.set(refKey, parsed.data.id);
     nodes.push(parsed.data);
-  });
-
-  const origenCol = colOf(relations.headers, RELATION_CORE, "origen");
-  const destinoCol = colOf(relations.headers, RELATION_CORE, "destino");
-  const relTipoCol = colOf(relations.headers, RELATION_CORE, "tipo");
-  if (relations.headers.length > 0) {
-    if (origenCol < 0) push(issue(EXCEL_SHEETS.relations, 1, "origen", "Falta la columna «origen»."));
-    if (destinoCol < 0) push(issue(EXCEL_SHEETS.relations, 1, "destino", "Falta la columna «destino»."));
-    if (relTipoCol < 0) push(issue(EXCEL_SHEETS.relations, 1, "tipo", "Falta la columna «tipo»."));
-  }
-  const etiquetaCol = colOf(relations.headers, RELATION_CORE, "etiqueta");
-  const natCol = colOf(relations.headers, RELATION_CORE, "naturaleza");
-  const dirCol = colOf(relations.headers, RELATION_CORE, "direccion");
-  const inicioCol = colOf(relations.headers, RELATION_CORE, "inicio");
-  const finCol = colOf(relations.headers, RELATION_CORE, "fin");
-  const fuenteCol = colOf(relations.headers, RELATION_CORE, "fuente");
-  const confCol = colOf(relations.headers, RELATION_CORE, "confianza");
-  const relDescCol = colOf(relations.headers, RELATION_CORE, "descripcion");
-
-  if (relations.rows.length > GRAPH_LIMITS.maxEdges) {
-    push(issue(EXCEL_SHEETS.relations, 0, "filas", `Máximo ${GRAPH_LIMITS.maxEdges} relaciones.`));
-  }
-  if (occupied.edges + relations.rows.length > GRAPH_LIMITS.maxEdges) {
-    push(issue(EXCEL_SHEETS.relations, 0, "filas", `El grafo no admite más relaciones (máximo ${GRAPH_LIMITS.maxEdges}).`));
   }
 
   const edges: GraphSnapshot["edges"] = [];
-  relations.rows.forEach((row, i) => {
-    const excelRow = i + 2;
-    const origen = cell(row, origenCol);
-    const destino = cell(row, destinoCol);
-    const tipoRaw = cell(row, relTipoCol);
-    if (origen === "" && destino === "" && tipoRaw === "") return;
-    const sourceId = refs.get(foldHeader(origen));
-    const targetId = refs.get(foldHeader(destino));
-    if (!sourceId) {
-      push(issue(EXCEL_SHEETS.relations, excelRow, "origen", "No hay una entidad con esa ref."));
-      return;
-    }
+  for (const link of links) {
+    const sourceId = refs.get(link.from);
+    const targetId = refs.get(link.to);
+    if (!sourceId) continue;
     if (!targetId) {
-      push(issue(EXCEL_SHEETS.relations, excelRow, "destino", "No hay una entidad con esa ref."));
-      return;
+      push(issue(link.excelRow, "enlace_con", "No hay ninguna fila con esa ref. Créala en «ref» antes de enlazarla."));
+      continue;
     }
-    const relationshipType = REL_BY_FOLD.get(foldHeader(tipoRaw));
+    if (sourceId === targetId) {
+      push(issue(link.excelRow, "enlace_con", "Un enlace debe unir dos entidades distintas."));
+      continue;
+    }
+    const relationshipType = REL_BY_FOLD.get(foldHeader(link.tipo));
     if (!relationshipType) {
-      push(issue(EXCEL_SHEETS.relations, excelRow, "tipo", "Tipo de relación no válido."));
-      return;
+      push(issue(link.excelRow, "tipo_enlace", "Elige un tipo de enlace de la lista."));
+      continue;
     }
-    const evidenceRaw = cell(row, natCol);
-    const directionRaw = cell(row, dirCol);
-    const confRaw = cell(row, confCol);
-    let confidence: number | undefined;
-    if (confRaw !== "") {
-      const n = Number(confRaw);
-      if (!Number.isInteger(n)) {
-        push(issue(EXCEL_SHEETS.relations, excelRow, "confianza", "La confianza debe ser un entero de 0 a 100."));
-        return;
-      }
-      confidence = n;
-    }
-    const metadata: Record<string, unknown> = {
-      direction: directionRaw === "" ? "forward" : (DIRECTION_BY_FOLD.get(foldHeader(directionRaw)) ?? directionRaw),
-      evidenceClass: evidenceRaw === "" ? "hypothesis" : (EVIDENCE_BY_FOLD.get(foldHeader(evidenceRaw)) ?? evidenceRaw),
-    };
-    const description = cell(row, relDescCol);
-    const startDate = cell(row, inicioCol);
-    const endDate = cell(row, finCol);
-    const source = cell(row, fuenteCol);
-    if (description) metadata.description = description;
-    if (startDate) metadata.startDate = startDate;
-    if (endDate) metadata.endDate = endDate;
-    if (source) metadata.source = source;
-    if (confidence !== undefined) metadata.confidence = confidence;
-
     const parsed = edgeInputSchema.safeParse({
       id: crypto.randomUUID(),
       sourceId,
       targetId,
       relationshipType,
-      label: cell(row, etiquetaCol),
-      metadata,
+      label: link.etiqueta,
+      metadata: {
+        direction: link.direccion === "" ? "forward" : (DIRECTION_BY_FOLD.get(foldHeader(link.direccion)) ?? link.direccion),
+        evidenceClass: link.naturaleza === "" ? "hypothesis" : (EVIDENCE_BY_FOLD.get(foldHeader(link.naturaleza)) ?? link.naturaleza),
+      },
     });
     if (!parsed.success) {
       const first = parsed.error.issues[0];
-      const field = first?.path.map(String).join(".") || "tipo";
-      push(issue(EXCEL_SHEETS.relations, excelRow, field, first?.message ?? "Fila no válida."));
-      return;
+      push(issue(link.excelRow, first?.path.map(String).join(".") || "tipo_enlace", first?.message ?? "Enlace no válido."));
+      continue;
     }
     edges.push(parsed.data);
-  });
-
-  if (nodes.length === 0 && errors.length === 0) {
-    push(issue(EXCEL_SHEETS.entities, 0, "filas", "No hay entidades que importar."));
   }
 
+  if (nodes.length === 0 && errors.length === 0) push(issue(0, "filas", "No hay entidades que importar."));
   if (errors.length > 0) return { ok: false, errors };
   return { ok: true, value: { nodes, edges } };
 }
 
-const ENTITY_CORE_HEADERS = ["ref", "tipo", "nombre", "descripcion", "notas", "etiquetas"] as const;
-
-/** Claves de metadatos (únicas) para la plantilla, en orden de aparición en el catálogo. */
-export function excelMetadataHeaders(): string[] {
-  const keys: string[] = [];
-  const seen = new Set<string>();
-  for (const def of Object.values(ENTITY_CATALOG)) {
-    for (const field of def.fields) {
-      if (seen.has(field.key)) continue;
-      seen.add(field.key);
-      keys.push(field.key);
-    }
-  }
-  return keys;
+function graphRow(values: Partial<Record<(typeof EXCEL_GRAPH_HEADERS)[number], string>>): string[] {
+  return EXCEL_GRAPH_HEADERS.map((h) => values[h] ?? "");
 }
 
-export const EXCEL_ENTITY_HEADERS = [...ENTITY_CORE_HEADERS, ...excelMetadataHeaders()];
-export const EXCEL_RELATION_HEADERS = [
-  "origen",
-  "destino",
-  "tipo",
-  "etiqueta",
-  "naturaleza",
-  "direccion",
-  "inicio",
-  "fin",
-  "fuente",
-  "confianza",
-  "descripcion",
-] as const;
-
-function entityExample(ref: string, tipo: string, nombre: string, extra: Record<string, string>): string[] {
-  const row = EXCEL_ENTITY_HEADERS.map((h) => {
-    if (h === "ref") return ref;
-    if (h === "tipo") return tipo;
-    if (h === "nombre") return nombre;
-    return extra[h] ?? "";
-  });
-  return row;
-}
-
-/** Filas de ejemplo (cabecera incluida) para generar la plantilla .xlsx. */
-export function excelTemplateTables(): { entities: ExcelTable; relations: ExcelTable; instructions: string[][] } {
-  const entities: ExcelTable = {
-    headers: [...EXCEL_ENTITY_HEADERS],
+/** Filas de ejemplo de la plantilla (cabecera no incluida). */
+export function excelTemplateSheet(): { help: string; headers: string[]; rows: string[][]; lists: { entityTypes: string[]; relationTypes: string[]; evidence: string[]; directions: string[] } } {
+  return {
+    help: EXCEL_HELP_TEXT,
+    headers: [...EXCEL_GRAPH_HEADERS],
     rows: [
-      entityExample("ana", "Persona", "Ana Pérez", { fullName: "Ana Pérez", alias: "AP", etiquetas: "caso" }),
-      entityExample("tel1", "Teléfono", "+34 600 000 000", { number: "+34 600 000 000", country: "ES", lineType: "mobile" }),
-      entityExample("acme", "Organización o empresa", "Acme SL", { legalName: "Acme SL", sector: "Servicios" }),
+      graphRow({
+        ref: "ana",
+        tipo: "Persona",
+        nombre: "Ana Pérez",
+        etiquetas: "caso",
+        enlace_con: "tel1",
+        tipo_enlace: "Contacto",
+        naturaleza: "Hipótesis",
+        direccion: "origen→destino",
+      }),
+      graphRow({
+        ref: "ana",
+        enlace_con: "acme",
+        tipo_enlace: "Relación comercial",
+        etiqueta_enlace: "socia",
+        naturaleza: "Observación",
+        direccion: "ambos",
+      }),
+      graphRow({ ref: "tel1", tipo: "Teléfono", nombre: "+34 600 000 000" }),
+      graphRow({ ref: "acme", tipo: "Organización o empresa", nombre: "Acme SL" }),
     ],
+    lists: {
+      entityTypes: [...EXCEL_ENTITY_TYPE_LABELS],
+      relationTypes: [...EXCEL_RELATION_TYPE_LABELS],
+      evidence: [...EXCEL_EVIDENCE_LABELS],
+      directions: [...EXCEL_DIRECTION_LABELS],
+    },
   };
-  const relations: ExcelTable = {
-    headers: [...EXCEL_RELATION_HEADERS],
-    rows: [
-      ["ana", "tel1", "Contacto", "", "Hipótesis", "origen→destino", "", "", "", "", ""],
-      ["ana", "acme", "Relación comercial", "socia", "Observación", "ambos", "2024-01-15", "", "registro mercantil", "70", ""],
-    ],
-  };
-  const typeLines = ENTITY_TYPE_IDS.map((id) => `${ENTITY_CATALOG[id].name}  |  ${id}`);
-  const relLines = RELATIONSHIP_TYPES.map((id) => `${RELATIONSHIP_LABELS_ES[id]}  |  ${id}`);
-  const fieldLines = Object.values(ENTITY_CATALOG).flatMap((def) =>
-    def.fields.map((f) => {
-      const opts = f.options?.map((o) => `${o.label} (${o.value})`).join(", ");
-      return `${def.name}: ${f.key} — ${f.label}${opts ? ` [${opts}]` : ""}`;
-    }),
-  );
-  const instructions: string[][] = [
-    ["Importar un grafo en A-Link"],
-    [""],
-    ["1. Rellena la hoja Entidades (una fila por nodo) y la hoja Relaciones (una fila por arista)."],
-    ["2. «ref» es una clave tuya (ana, tel1…). Las relaciones usan esas refs en origen y destino."],
-    ["3. «tipo» admite el nombre en español o el identificador interno."],
-    ["4. Las columnas de metadatos (fullName, number, plate…) son opcionales y solo aplican a su tipo."],
-    ["5. Guarda el fichero como .xlsx (Excel 2007 o posterior). No uses fórmulas."],
-    ["6. En el editor: Importar Excel. El lienzo se reorganiza solo."],
-    [""],
-    ["Tipos de entidad (nombre | identificador)"],
-    ...typeLines.map((l) => [l]),
-    [""],
-    ["Tipos de relación (nombre | identificador)"],
-    ...relLines.map((l) => [l]),
-    [""],
-    ["Naturaleza: Hipótesis | Dato registrado | Observación"],
-    ["Dirección: origen→destino | sin dirección | ambos"],
-    ["Fechas: AAAA-MM-DD. Confianza: 0 a 100. Etiquetas: separadas por coma."],
-    [""],
-    ["Campos de metadatos por tipo (columna = clave)"],
-    ...fieldLines.map((l) => [l]),
-  ];
-  return { entities, relations, instructions };
 }

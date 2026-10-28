@@ -1,66 +1,39 @@
 # Importar un grafo desde Excel
 
-En el editor: **Importar Excel**. Puedes descargar la plantilla (`plantilla-grafo-a-link.xlsx`) y rellenarla.
+En el editor: **Importar Excel**. Descarga la plantilla (`plantilla-grafo-a-link.xlsx`) y rellénala.
 
-El fichero debe ser **.xlsx** (Excel 2007 o posterior), sin macros ni fórmulas, máximo 2 MB. La lectura es en el
-navegador: el Excel no se sube al servidor.
+El fichero debe ser **.xlsx** (Excel 2007 o posterior), sin macros ni fórmulas, máximo 2 MB. Se lee en el navegador: no se sube al servidor.
 
-## Hojas
+## Una sola hoja: `Grafo`
 
-| Hoja | Obligatorio | Contenido |
+Cada fila es una entidad. Si esa entidad se une a otra, la misma fila lleva el enlace. La primera fila es una ayuda breve (Excel la ignora al importar). Las columnas **tipo**, **tipo_enlace**, **naturaleza** y **direccion** tienen lista desplegable.
+
+| Columna | Obligatorio | Qué poner |
 |---|---|---|
-| `Entidades` | sí | Una fila por nodo |
-| `Relaciones` | no | Una fila por arista |
-| `Instrucciones` | no | La plantilla la incluye; se ignora al importar |
-
-## Entidades
-
-| Columna | Obligatorio | Qué es |
-|---|---|---|
-| `ref` | sí | Clave tuya (`ana`, `tel1`…). Única en el fichero. Las relaciones apuntan a ella. |
-| `tipo` | sí | Nombre en español (`Persona`) o identificador (`person`) |
-| `nombre` | sí | Texto que se ve en el grafo |
+| `ref` | sí | Clave corta tuya (`ana`, `tel1`). Si dejas la celda vacía, se reutiliza la de la fila de arriba. |
+| `tipo` | sí (en la primera fila de esa ref) | Elige de la lista (Persona, Teléfono…) |
+| `nombre` | sí (en la primera fila de esa ref) | Texto que se ve en el grafo |
 | `descripcion` | no | |
-| `notas` | no | |
-| `etiquetas` | no | Separadas por coma o punto y coma |
-| claves de metadatos | no | `fullName`, `number`, `plate`, `profileUrl`… (lista completa en la hoja Instrucciones) |
+| `etiquetas` | no | Separadas por coma |
+| `enlace_con` | si hay enlace | `ref` de la otra entidad |
+| `tipo_enlace` | si hay `enlace_con` | Elige de la lista (Contacto, Familiar…) |
+| `etiqueta_enlace` | no | Texto sobre la flecha (`socia`…) |
+| `naturaleza` | no | Hipótesis (por defecto), Dato registrado u Observación |
+| `direccion` | no | origen→destino (por defecto), sin dirección o ambos |
 
-Tipos: Persona (`person`), Bien inmueble (`property`), Vehículo (`vehicle`), Teléfono (`phone`), Red social (`social`),
-Organización o empresa (`organization`), Cuenta bancaria (`bank_account`), Documento (`document`), Ubicación (`location`),
-Otro (`other`).
+Varios enlaces de la misma entidad: **repite la ref** en la fila siguiente (o déjala vacía) y cambia solo `enlace_con` y `tipo_enlace`. No hace falta volver a escribir tipo ni nombre.
 
-## Relaciones
+Hay una hoja oculta `Listas` que alimenta los desplegables; no la edites.
 
-| Columna | Obligatorio | Qué es |
-|---|---|---|
-| `origen` | sí | `ref` de la entidad origen |
-| `destino` | sí | `ref` de la entidad destino |
-| `tipo` | sí | p. ej. `Contacto` o `contact` |
-| `etiqueta` | no | Texto sobre la arista |
-| `naturaleza` | no | `Hipótesis` (por defecto), `Dato registrado`, `Observación` |
-| `direccion` | no | `origen→destino` (por defecto), `sin dirección`, `ambos` |
-| `inicio` / `fin` | no | `AAAA-MM-DD` |
-| `fuente` | no | |
-| `confianza` | no | Entero 0–100 |
-| `descripcion` | no | |
+## Ejemplo
 
-Tipos de relación: Propiedad, Titularidad, Familiar, Asociación, Contacto, Uso de dispositivo, Vinculación digital,
-Ubicación, Relación comercial, Personalizada.
+| ref | tipo | nombre | enlace_con | tipo_enlace |
+|---|---|---|---|---|
+| ana | Persona | Ana Pérez | tel1 | Contacto |
+| ana | | | acme | Relación comercial |
+| tel1 | Teléfono | +34 600 000 000 | | |
+| acme | Organización o empresa | Acme SL | | |
 
-## Ejemplo mínimo
+Resultado: 3 entidades y 2 enlaces (Ana→teléfono y Ana↔empresa).
 
-**Entidades**
-
-| ref | tipo | nombre |
-|---|---|---|
-| ana | Persona | Ana Pérez |
-| tel1 | Teléfono | +34 600 000 000 |
-
-**Relaciones**
-
-| origen | destino | tipo |
-|---|---|---|
-| ana | tel1 | Contacto |
-
-Tras importar, ZoomCharts reorganiza el lienzo. El autoguardado persiste el resultado como cualquier otra edición.
-Si el grafo ya tenía contenido, las filas se **añaden** (no se borra lo anterior).
+Tras importar, el lienzo se reorganiza. Si el grafo ya tenía contenido, las filas se **añaden**. Datos extra de cada tipo (matrícula, URL…) se editan después en el panel de la aplicación.

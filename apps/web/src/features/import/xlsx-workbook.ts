@@ -1,9 +1,11 @@
 import {
+  EXCEL_DROPDOWN_PROMPTS,
+  EXCEL_GRAPH_HEADERS,
   EXCEL_IMPORT_LIMITS,
   EXCEL_SHEETS,
-  excelTemplateTables,
+  excelTemplateSheet,
   foldHeader,
-  graphFromExcelTables,
+  graphFromExcelSheet,
   type ExcelImportResult,
   type ExcelTable,
 } from "@a-link/shared";
@@ -14,6 +16,7 @@ const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04] as const;
 const OLE_MAGIC = [0xd0, 0xcf, 0x11, 0xe0] as const;
 const MAX_UNCOMPRESSED = 8 * 1024 * 1024;
 const MAX_ENTRIES = 40;
+const DATA_ROWS = 500;
 
 export class ExcelFileError extends Error {
   constructor(message: string) {
@@ -75,30 +78,94 @@ function textOf(el: Element | undefined): string {
   return (el.textContent ?? "").replace(/\r\n/g, "\n").trim();
 }
 
-function sheetXml(name: string, table: ExcelTable): string {
-  const rows = [table.headers, ...table.rows];
-  const body = rows
-    .map((row, r) => {
-      const cells = row
-        .map((value: string, c: number) => {
-          const ref = `${colLetter(c)}${r + 1}`;
-          return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`;
-        })
-        .join("");
-      return `<row r="${r + 1}">${cells}</row>`;
-    })
-    .join("");
-  void name;
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`;
+function inlineCell(row: number, col: number, value: string, style?: number): string {
+  if (value === "" && style === undefined) return "";
+  const s = style !== undefined ? ` s="${style}"` : "";
+  return `<c r="${colLetter(col)}${row}"${s} t="inlineStr"><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`;
 }
 
-function instructionsXml(lines: string[][]): string {
-  return sheetXml(EXCEL_SHEETS.instructions, { headers: lines[0] ?? ["Instrucciones"], rows: lines.slice(1) });
+function headerIndex(name: (typeof EXCEL_GRAPH_HEADERS)[number]): number {
+  return EXCEL_GRAPH_HEADERS.indexOf(name);
 }
 
-/** Genera la plantilla .xlsx (solo texto; sin macros ni fórmulas). */
+function dataValidation(col: number, listCol: string, lastListRow: number, prompt: string): string {
+  const letter = colLetter(col);
+  return `<dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="1" promptTitle="Lista" prompt="${xmlEscape(prompt)}" errorTitle="Valor no valido" error="Elige un valor de la lista." sqref="${letter}3:${letter}${DATA_ROWS + 2}"><formula1>${EXCEL_SHEETS.lists}!$${listCol}$1:$${listCol}$${lastListRow}</formula1></dataValidation>`;
+}
+
+function listSheetXml(columns: string[][]): string {
+  const height = Math.max(0, ...columns.map((c) => c.length));
+  const lastCol = colLetter(Math.max(0, columns.length - 1));
+  const rows = [];
+  for (let r = 0; r < height; r++) {
+    const cells = columns.map((col, c) => (col[r] ? inlineCell(r + 1, c, col[r]!) : "")).join("");
+    rows.push(`<row r="${r + 1}">${cells}</row>`);
+  }
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:${lastCol}${Math.max(1, height)}"/><sheetData>${rows.join("")}</sheetData></worksheet>`;
+}
+
+function graphSheetXml(spec: ReturnType<typeof excelTemplateSheet>): string {
+  const lastCol = colLetter(spec.headers.length - 1);
+  const lastRow = spec.rows.length + 2;
+  const headerRow = 2;
+  const help = `<row r="1" ht="48" customHeight="1">${inlineCell(1, 0, spec.help, 1)}</row>`;
+  const headers = `<row r="${headerRow}">${spec.headers.map((h, c) => inlineCell(headerRow, c, h, 2)).join("")}</row>`;
+  const data = spec.rows.map((row, i) => `<row r="${i + 3}">${row.map((value, c) => inlineCell(i + 3, c, value)).join("")}</row>`).join("");
+  const validations = [
+    dataValidation(headerIndex("tipo"), "A", spec.lists.entityTypes.length, EXCEL_DROPDOWN_PROMPTS.tipo),
+    dataValidation(headerIndex("tipo_enlace"), "B", spec.lists.relationTypes.length, EXCEL_DROPDOWN_PROMPTS.tipo_enlace),
+    dataValidation(headerIndex("naturaleza"), "C", spec.lists.evidence.length, EXCEL_DROPDOWN_PROMPTS.naturaleza),
+    dataValidation(headerIndex("direccion"), "D", spec.lists.directions.length, EXCEL_DROPDOWN_PROMPTS.direccion),
+  ].join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetPr><tabColor rgb="FF4F46E5"/></sheetPr>
+<dimension ref="A1:${lastCol}${lastRow}"/>
+<sheetViews><sheetView workbookViewId="0"><pane ySplit="2" topLeftCell="A3" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A3" sqref="A3"/></sheetView></sheetViews>
+<sheetFormatPr defaultRowHeight="18"/>
+<cols>
+<col min="1" max="1" width="12" customWidth="1"/>
+<col min="2" max="2" width="24" customWidth="1"/>
+<col min="3" max="3" width="22" customWidth="1"/>
+<col min="4" max="4" width="22" customWidth="1"/>
+<col min="5" max="5" width="14" customWidth="1"/>
+<col min="6" max="6" width="14" customWidth="1"/>
+<col min="7" max="7" width="22" customWidth="1"/>
+<col min="8" max="8" width="16" customWidth="1"/>
+<col min="9" max="9" width="18" customWidth="1"/>
+<col min="10" max="10" width="16" customWidth="1"/>
+</cols>
+<sheetData>${help}${headers}${data}</sheetData>
+<autoFilter ref="A${headerRow}:${lastCol}${headerRow}"/>
+<mergeCells count="1"><mergeCell ref="A1:${lastCol}1"/></mergeCells>
+<dataValidations count="4">${validations}</dataValidations>
+</worksheet>`;
+}
+
+const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="3">
+<font><sz val="11"/><color rgb="FF000000"/><name val="Calibri"/><family val="2"/></font>
+<font><sz val="10"/><color rgb="FF475569"/><name val="Calibri"/><family val="2"/></font>
+<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font>
+</fonts>
+<fills count="3">
+<fill><patternFill patternType="none"/></fill>
+<fill><patternFill patternType="gray125"/></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FF4F46E5"/></patternFill></fill>
+</fills>
+<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="3">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment wrapText="1" vertical="center"/></xf>
+<xf numFmtId="0" fontId="2" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1"><alignment horizontal="center"/></xf>
+</cellXfs>
+</styleSheet>`;
+
+/** Genera la plantilla .xlsx: una hoja visible, listas desplegables, sin macros ni fórmulas. */
 export async function buildExcelTemplate(): Promise<Uint8Array> {
-  const spec = excelTemplateTables();
+  const spec = excelTemplateSheet();
   const zip = new JSZip();
   zip.file(
     "[Content_Types].xml",
@@ -107,9 +174,9 @@ export async function buildExcelTemplate(): Promise<Uint8Array> {
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
 <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
 <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
 <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-<Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
 </Types>`,
   );
   zip.file(
@@ -123,10 +190,10 @@ export async function buildExcelTemplate(): Promise<Uint8Array> {
     "xl/workbook.xml",
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<workbookPr/>
 <sheets>
-<sheet name="${EXCEL_SHEETS.entities}" sheetId="1" r:id="rId1"/>
-<sheet name="${EXCEL_SHEETS.relations}" sheetId="2" r:id="rId2"/>
-<sheet name="${EXCEL_SHEETS.instructions}" sheetId="3" r:id="rId3"/>
+<sheet name="${EXCEL_SHEETS.graph}" sheetId="1" r:id="rId1"/>
+<sheet name="${EXCEL_SHEETS.lists}" sheetId="2" r:id="rId2" state="hidden"/>
 </sheets>
 </workbook>`,
   );
@@ -136,34 +203,17 @@ export async function buildExcelTemplate(): Promise<Uint8Array> {
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
 <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
-<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>
+<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
 </Relationships>`,
   );
-  zip.file("xl/worksheets/sheet1.xml", sheetXml(EXCEL_SHEETS.entities, spec.entities));
-  zip.file("xl/worksheets/sheet2.xml", sheetXml(EXCEL_SHEETS.relations, spec.relations));
-  zip.file("xl/worksheets/sheet3.xml", instructionsXml(spec.instructions));
+  zip.file("xl/styles.xml", STYLES_XML);
+  zip.file("xl/worksheets/sheet1.xml", graphSheetXml(spec));
+  zip.file("xl/worksheets/sheet2.xml", listSheetXml([spec.lists.entityTypes, spec.lists.relationTypes, spec.lists.evidence, spec.lists.directions]));
   return zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
 }
 
 export const excelTemplateFileName = "plantilla-grafo-a-link.xlsx";
 export const excelTemplateMime = XLSX_MIME;
-
-function isDateHeader(header: string): boolean {
-  const f = foldHeader(header);
-  return ["inicio", "fin", "startdate", "enddate", "issuedon", "fecha", "fechainicio", "fechafin"].includes(f) || f.includes("fecha");
-}
-
-function numberToCell(n: number, header: string): string {
-  if (isDateHeader(header) && n >= 2000 && n < 80_000) {
-    const utc = Date.UTC(1899, 11, 30) + Math.round(n * 86_400_000);
-    const d = new Date(utc);
-    const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
-    const dd = String(d.getUTCDate()).padStart(2, "0");
-    return `${d.getUTCFullYear()}-${mm}-${dd}`;
-  }
-  if (Number.isInteger(n) && Math.abs(n) < 1e15) return String(n);
-  return String(n);
-}
 
 function loadSharedStrings(xml: string | undefined): string[] {
   if (!xml) return [];
@@ -171,57 +221,66 @@ function loadSharedStrings(xml: string | undefined): string[] {
   return localTags(doc, "si").map((si) => textOf(si));
 }
 
+function looksLikeHeader(values: string[]): boolean {
+  const folded = new Set(values.map(foldHeader));
+  const hasRef = ["ref", "id", "clave", "referencia"].some((n) => folded.has(n));
+  const hasTipo = folded.has("tipo") || folded.has("type");
+  const hasNombre = folded.has("nombre") || folded.has("name") || folded.has("label");
+  return hasRef && hasTipo && hasNombre;
+}
+
+function readCell(c: Element, shared: string[]): string {
+  const t = c.getAttribute("t");
+  if (t === "inlineStr") return textOf(localTags(c, "t")[0]);
+  if (t === "s") {
+    const idx = Number(textOf(localTags(c, "v")[0]));
+    return Number.isInteger(idx) ? (shared[idx] ?? "") : "";
+  }
+  if (t === "e") throw new ExcelFileError("El Excel contiene celdas con error.");
+  return textOf(localTags(c, "v")[0]);
+}
+
+/** Solo fórmulas de celda (`<c><f>`). Las listas desplegables que Excel guarda como `<xm:f>` no cuentan. */
+function hasCellFormulas(doc: Document): boolean {
+  return localTags(doc, "f").some((el) => {
+    for (let p = el.parentElement; p; p = p.parentElement) {
+      if (p.localName === "c") return true;
+    }
+    return false;
+  });
+}
+
 function sheetToTable(xml: string, shared: string[]): ExcelTable {
   const doc = parseXml(xml);
-  if (localTags(doc, "f").length > 0) throw new ExcelFileError("El Excel no puede contener fórmulas. Copia los valores y vuelve a guardarlo.");
-  const rowsEl = localTags(doc, "row");
+  if (hasCellFormulas(doc)) throw new ExcelFileError("El Excel no puede contener fórmulas. Copia los valores y vuelve a guardarlo.");
   let width = 0;
-  const sparse: Array<Map<number, string>> = [];
-  for (const row of rowsEl) {
+  const byRow = new Map<number, Map<number, string>>();
+  for (const row of localTags(doc, "row")) {
+    const rowNum = Number(row.getAttribute("r") ?? 0);
     const cells = new Map<number, string>();
     for (const c of localTags(row, "c")) {
-      const ref = c.getAttribute("r") ?? "";
-      const i = colIndex(ref);
+      const i = colIndex(c.getAttribute("r") ?? "");
       if (i < 0) continue;
       width = Math.max(width, i + 1);
-      const t = c.getAttribute("t");
-      let value = "";
-      if (t === "inlineStr") value = textOf(localTags(c, "t")[0]);
-      else if (t === "s") {
-        const idx = Number(textOf(localTags(c, "v")[0]));
-        value = Number.isInteger(idx) ? (shared[idx] ?? "") : "";
-      } else if (t === "str" || t === "b") value = textOf(localTags(c, "v")[0]);
-      else if (t === "e") throw new ExcelFileError("El Excel contiene celdas con error.");
-      else {
-        const raw = textOf(localTags(c, "v")[0]);
-        if (raw === "") value = "";
-        else if (t === "d") value = raw.slice(0, 10);
-        else {
-          const n = Number(raw);
-          value = Number.isFinite(n) ? raw : raw;
-        }
-      }
-      cells.set(i, value);
+      cells.set(i, readCell(c, shared));
     }
-    sparse.push(cells);
+    byRow.set(rowNum > 0 ? rowNum : byRow.size + 1, cells);
   }
-  if (sparse.length === 0) return { headers: [], rows: [] };
-  const headerMap = sparse[0]!;
-  const headers: string[] = [];
-  for (let i = 0; i < width; i++) headers.push((headerMap.get(i) ?? "").trim());
+  const ordered = [...byRow.entries()].sort((a, b) => a[0] - b[0]).map(([n, cells]) => {
+    const line: string[] = [];
+    for (let i = 0; i < width; i++) line.push(cells.get(i) ?? "");
+    return { n, line };
+  });
+  const headerAt = ordered.findIndex((r) => looksLikeHeader(r.line));
+  if (headerAt < 0) return { headers: [], rows: [] };
+  const header = ordered[headerAt]!;
+  const headers = header.line.map((h) => h.trim());
   while (headers.length > 0 && headers.at(-1) === "") headers.pop();
-  const rows: string[][] = [];
-  for (const cells of sparse.slice(1)) {
-    const row = headers.map((header, i) => {
-      const raw = cells.get(i) ?? "";
-      const n = Number(raw);
-      if (raw !== "" && Number.isFinite(n) && !/^0\d/.test(raw) && isDateHeader(header)) return numberToCell(n, header);
-      return raw;
-    });
-    if (row.every((c) => c === "")) continue;
-    rows.push(row);
-  }
-  return { headers, rows };
+  const rows = ordered
+    .slice(headerAt + 1)
+    .map((r) => headers.map((_, i) => (r.line[i] ?? "").trim()))
+    .filter((row) => row.some((c) => c !== ""));
+  return { headers, rows, headerRow: header.n };
 }
 
 async function readZip(bytes: Uint8Array): Promise<JSZip> {
@@ -240,17 +299,8 @@ async function readZip(bytes: Uint8Array): Promise<JSZip> {
   return zip;
 }
 
-function findSheet(tables: Map<string, ExcelTable>, ...names: string[]): ExcelTable | undefined {
-  const wanted = new Set(names.map(foldHeader));
-  for (const [name, table] of tables) {
-    if (wanted.has(foldHeader(name))) return table;
-  }
-  return undefined;
-}
-
 /**
- * Lee un .xlsx y lo valida con el mismo esquema que el editor y la API.
- * `occupied` cuenta lo que ya hay en el grafo (para no pasar el límite al añadir).
+ * Lee un .xlsx de una hoja (Grafo) y lo valida con el mismo esquema que el editor y la API.
  */
 export async function importExcelFile(
   file: Pick<File, "name" | "size">,
@@ -276,6 +326,7 @@ export async function importExcelFile(
   const tables = new Map<string, ExcelTable>();
   for (const sheet of localTags(wb, "sheet")) {
     const name = sheet.getAttribute("name") ?? "";
+    if (foldHeader(name) === foldHeader(EXCEL_SHEETS.lists)) continue;
     const rid =
       sheet.getAttribute("r:id") ??
       sheet.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id") ??
@@ -288,8 +339,11 @@ export async function importExcelFile(
     if (!xml) continue;
     tables.set(name, sheetToTable(xml, shared));
   }
-  const entities = findSheet(tables, EXCEL_SHEETS.entities, "Entities");
-  if (!entities) throw new ExcelFileError(`Falta la hoja «${EXCEL_SHEETS.entities}». Descarga la plantilla para ver la estructura.`);
-  const relations = findSheet(tables, EXCEL_SHEETS.relations, "Relations", "Relaciones") ?? { headers: [], rows: [] };
-  return graphFromExcelTables(entities, relations, occupied);
+  const preferred = [...tables.entries()].find(([name, table]) => foldHeader(name) === foldHeader(EXCEL_SHEETS.graph) && looksLikeHeader(table.headers));
+  const fallback = [...tables.entries()].find(([, table]) => looksLikeHeader(table.headers));
+  const chosen = preferred ?? fallback;
+  if (!chosen) {
+    throw new ExcelFileError("No se encontró la hoja «Grafo» con las columnas ref, tipo y nombre. Descarga la plantilla nueva.");
+  }
+  return graphFromExcelSheet(chosen[1], occupied);
 }

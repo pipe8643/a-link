@@ -1,3 +1,4 @@
+import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 import { buildExcelTemplate, excelTemplateFileName, importExcelFile, validateExcelFile } from "./xlsx-workbook";
 
@@ -27,5 +28,39 @@ describe("plantilla e importación", () => {
     const bytes = await buildExcelTemplate();
     const r = await importExcelFile({ name: "p.xlsx", size: bytes.length }, bytes);
     expect(r.ok).toBe(true);
+  });
+
+  it("incluye desplegables y oculta la hoja Listas", async () => {
+    const bytes = await buildExcelTemplate();
+    const zip = await JSZip.loadAsync(bytes);
+    const workbook = await zip.file("xl/workbook.xml")!.async("string");
+    expect(workbook).toContain('name="Grafo"');
+    expect(workbook).toContain('name="Listas"');
+    expect(workbook).toContain('state="hidden"');
+    const sheet = await zip.file("xl/worksheets/sheet1.xml")!.async("string");
+    expect(sheet).toContain("dataValidations");
+    expect(sheet).toContain("Listas!$A$1");
+    expect(sheet.includes("<f>")).toBe(false);
+  });
+
+  it("acepta las listas desplegables que Excel guarda como xm:f", async () => {
+    const zip = await JSZip.loadAsync(await buildExcelTemplate());
+    const path = "xl/worksheets/sheet1.xml";
+    const sheet = (await zip.file(path)!.async("string"))
+      .replace("<worksheet ", '<worksheet xmlns:xm="http://schemas.microsoft.com/office/excel/2006/main" ')
+      .replace(/<formula1>([^<]+)<\/formula1>/g, "<formula1><xm:f>$1</xm:f></formula1>");
+    zip.file(path, sheet);
+    const bytes = await zip.generateAsync({ type: "uint8array" });
+    const r = await importExcelFile({ name: "p.xlsx", size: bytes.length }, bytes);
+    expect(r.ok, r.ok ? "" : JSON.stringify(r.errors)).toBe(true);
+  });
+
+  it("rechaza una fórmula en una celda", async () => {
+    const zip = await JSZip.loadAsync(await buildExcelTemplate());
+    const path = "xl/worksheets/sheet1.xml";
+    const sheet = (await zip.file(path)!.async("string")).replace("</sheetData>", `<row r="99"><c r="A99"><f>SUM(1)</f><v>1</v></c></row></sheetData>`);
+    zip.file(path, sheet);
+    const bytes = await zip.generateAsync({ type: "uint8array" });
+    await expect(importExcelFile({ name: "p.xlsx", size: bytes.length }, bytes)).rejects.toThrow(/fórmulas/);
   });
 });

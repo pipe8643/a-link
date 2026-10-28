@@ -40,7 +40,7 @@ function ImportForm({ occupied, onClose, onImport }: Omit<Props, "open">) {
     try {
       const bytes = await buildExcelTemplate();
       downloadBytes(bytes, excelTemplateMime, excelTemplateFileName);
-      toast.success("Plantilla descargada. Rellena las hojas Entidades y Relaciones.");
+      toast.success("Plantilla descargada. Rellena la hoja Grafo; tipo y enlaces van con lista desplegable.");
     } catch {
       setError("No se pudo generar la plantilla.");
     } finally {
@@ -77,28 +77,20 @@ function ImportForm({ occupied, onClose, onImport }: Omit<Props, "open">) {
       <DialogHeader>
         <DialogTitle>Importar Excel</DialogTitle>
         <DialogDescription>
-          Sube un .xlsx con las hojas «{EXCEL_SHEETS.entities}» y «{EXCEL_SHEETS.relations}». El lienzo se reorganiza
-          solo. Máximo {Math.round(EXCEL_IMPORT_LIMITS.maxBytes / (1024 * 1024))} MB.
+          Una sola hoja «{EXCEL_SHEETS.graph}». El lienzo se reorganiza solo. Máximo{" "}
+          {Math.round(EXCEL_IMPORT_LIMITS.maxBytes / (1024 * 1024))} MB, sin fórmulas.
         </DialogDescription>
       </DialogHeader>
 
-      <div className="grid gap-3 text-sm">
+      <div className="grid gap-2 text-sm">
         <p>
-          Columnas de <strong>Entidades</strong>: <code className="text-xs">ref</code>, <code className="text-xs">tipo</code>,{" "}
-          <code className="text-xs">nombre</code> (obligatorias). Opcionales: <code className="text-xs">descripcion</code>,{" "}
-          <code className="text-xs">notas</code>, <code className="text-xs">etiquetas</code> y las claves de cada tipo (
-          <code className="text-xs">fullName</code>, <code className="text-xs">number</code>, <code className="text-xs">plate</code>
-          …).
+          Cada fila es una entidad: <code className="text-xs">ref</code>, <code className="text-xs">tipo</code> y{" "}
+          <code className="text-xs">nombre</code>. Para unirla a otra, pon su ref en <code className="text-xs">enlace_con</code> y
+          elige el tipo de enlace.
         </p>
         <p>
-          Columnas de <strong>Relaciones</strong>: <code className="text-xs">origen</code>, <code className="text-xs">destino</code>{" "}
-          (las <code className="text-xs">ref</code> de las entidades), <code className="text-xs">tipo</code>. Opcionales:{" "}
-          <code className="text-xs">etiqueta</code>, <code className="text-xs">naturaleza</code>, <code className="text-xs">direccion</code>,
-          fechas, fuente y confianza.
-        </p>
-        <p className="text-muted-foreground">
-          «tipo» admite el nombre en español (Persona, Contacto) o el identificador (person, contact). Sin fórmulas. La
-          plantilla incluye filas de ejemplo y la hoja Instrucciones con todos los valores permitidos.
+          Si tiene varios enlaces, repite la misma ref en la fila de abajo (o déjala vacía) y cambia solo el enlace. Las
+          columnas tipo, tipo de enlace, naturaleza y dirección llevan lista desplegable.
         </p>
       </div>
 
