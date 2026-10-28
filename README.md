@@ -20,7 +20,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 
 Nunca pegues contraseñas, `SESSION_SECRET`, URLs de base de datos ni licencias de ZoomCharts en issues, commits ni documentación.
 
-Antes de un commit: `npm run scan:secrets`.
+Antes de un commit: `npm run scan:secrets`, `npm run scan:unsafe` y `npm run audit:prod`.
 
 ## Arranque local (Docker)
 
@@ -50,4 +50,5 @@ npm run build
 | `docs/03-plan-implementacion.md` | Fases y criterios de aceptación |
 | `docs/09-licencias-y-exportaciones.md` | ZoomCharts y formatos de exportación |
 | `docs/10-despliegue.md` | Docker, TLS, cabeceras, operación |
+| `docs/11-seguridad.md` | OWASP Top 10 2025, ISO 27001 (técnico), SQLi y XSS |
 | `SECURITY.md` | Cómo reportar un problema de seguridad |

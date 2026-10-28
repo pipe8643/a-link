@@ -57,6 +57,7 @@ export class OwnershipService {
   withOwnerLock<T>(ownerId: string, fn: (tx: Db) => Promise<T>, timeoutMs = 20_000): Promise<T> {
     return this.prisma.client.$transaction(
       async (tx) => {
+        // Plantilla etiquetada: Prisma envía `ownerId` como parámetro (no se concatena SQL).
         await tx.$queryRaw`SELECT id FROM users WHERE id = ${ownerId} FOR UPDATE`;
         return fn(tx);
       },

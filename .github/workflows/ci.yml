@@ -29,9 +29,14 @@ jobs:
         run: npm run prisma:generate -w @a-link/api
       - name: Rastreo de secretos
         run: npm run scan:secrets
+      - name: Rastreo de SQL crudo y XSS DOM
+        run: npm run scan:unsafe
+      - name: Auditoría de dependencias de producción
+        run: npm run audit:prod
       - name: Typecheck
         run: npm run typecheck
-      - name: Pruebas de scripts y frontend
+      - name: Pruebas de scripts, contrato compartido y frontend
         run: |
           npm run test:scripts
+          npm run test -w @a-link/shared
           npm run test:web

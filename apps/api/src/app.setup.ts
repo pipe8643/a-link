@@ -44,6 +44,17 @@ export function configureApp(app: NestExpressApplication, config: AppConfig, opt
     hsts: config.isProduction ? { maxAge: 31_536_000, includeSubDomains: true } : false,
     crossOriginResourcePolicy: { policy: "same-site" },
     referrerPolicy: { policy: "no-referrer" },
+    frameguard: { action: "deny" },
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: {
+        defaultSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        baseUri: ["'none'"],
+        formAction: ["'none'"],
+        objectSrc: ["'none'"],
+      },
+    },
   });
   const docs = helmet({
     hsts: false,

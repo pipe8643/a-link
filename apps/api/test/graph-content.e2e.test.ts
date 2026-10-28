@@ -125,6 +125,22 @@ describe.skipIf(!hasDb)("contenido del grafo: guardado, concurrencia y aislamien
       expect(res.status).toBe(200);
       expect((await get(A.agent, id)).body.nodes).toEqual([]);
     });
+
+    it("guarda SQL y HTML en etiquetas como texto (Prisma parametriza; no se interpreta)", async () => {
+      const id = await mkGraph(A.agent, "g");
+      const sql = node({ label: "Ana' OR 1=1 --" });
+      const xss = node({ label: "<script>alert(1)</script>", description: "<img src=x onerror=alert(1)>" });
+      const saved = await put(A.agent, id, { expectedRevision: 1, nodes: [sql, xss], edges: [] });
+      expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+
+      const read = await get(A.agent, id);
+      expect(read.status).toBe(200);
+      const byId = new Map<string, { label: string; description: string }>(read.body.nodes.map((n: { id: string }) => [n.id, n]));
+      expect(byId.get(sql.id)?.label).toBe("Ana' OR 1=1 --");
+      expect(byId.get(xss.id)?.label).toBe("<script>alert(1)</script>");
+      expect(byId.get(xss.id)?.description).toBe("<img src=x onerror=alert(1)>");
+      expect((await A.agent.get("/api/v1/graphs")).status).toBe(200);
+    });
   });
 
   describe("concurrencia optimista", () => {

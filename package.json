@@ -19,7 +19,15 @@
     "test:e2e": "npm run e2e -w @a-link/web",
     "test:scripts": "vitest run scripts",
     "scan:secrets": "node scripts/secret-scan.mjs",
-    "scan:secrets:images": "node scripts/secret-scan.mjs --images"
+    "scan:secrets:images": "node scripts/secret-scan.mjs --images",
+    "scan:unsafe": "node scripts/scan-unsafe.mjs",
+    "audit:prod": "npm audit --omit=dev --audit-level=high"
+  },
+  "overrides": {
+    "image-size": "2.0.4",
+    "multer": "2.5.0",
+    "body-parser": "2.4.0",
+    "fast-uri": "3.1.9"
   },
   "devDependencies": {
     "@types/node": "24.19.2",

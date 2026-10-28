@@ -26,6 +26,8 @@ test.describe("borde de producción: cabeceras, CSP, límites y red", () => {
       "base-uri 'self'",
       "frame-ancestors 'none'",
       "form-action 'self'",
+      "frame-src 'none'",
+      "media-src 'none'",
     ]) {
       expect(csp, d).toContain(d);
     }

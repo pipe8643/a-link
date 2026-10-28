@@ -88,11 +88,12 @@ describe("validación de metadata por tipo", () => {
     expect(ph.safeParse({ lineType: "satelital" }).success).toBe(false);
   });
 
-  it("solo admite URLs http/https (bloquea javascript: y data:)", () => {
+  it("solo admite URLs http/https (bloquea javascript:, data: y credenciales)", () => {
     const s = metadataSchemaFor("social");
     expect(s.safeParse({ profileUrl: "https://example.com/u/demo" }).success).toBe(true);
     expect(s.safeParse({ profileUrl: "javascript:alert(1)" }).success).toBe(false);
     expect(s.safeParse({ profileUrl: "data:text/html,<script>1</script>" }).success).toBe(false);
+    expect(s.safeParse({ profileUrl: "https://user:pass@example.com" }).success).toBe(false);
     expect(s.safeParse({ profileUrl: "no es una url" }).success).toBe(false);
   });
 

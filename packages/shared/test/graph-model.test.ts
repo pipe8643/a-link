@@ -67,6 +67,12 @@ describe("nodeInputSchema", () => {
     expect(nodeInputSchema.safeParse(node({ type: "social", metadata: { profileUrl: "https://example.test/ana" } })).success).toBe(true);
   });
 
+  it("trata payloads de SQL/XSS en el nombre como texto (no se interpretan)", () => {
+    expect(nodeInputSchema.parse(node({ label: "Ana' OR 1=1 --" })).label).toBe("Ana' OR 1=1 --");
+    expect(nodeInputSchema.parse(node({ label: "<script>alert(1)</script>" })).label).toBe("<script>alert(1)</script>");
+    expect(nodeInputSchema.parse(node({ description: "<img src=x onerror=alert(1)>" })).description).toBe("<img src=x onerror=alert(1)>");
+  });
+
   it("la posición es todo o nada, finita y acotada", () => {
     expect(nodeInputSchema.parse(node({ positionX: 10, positionY: null }))).toMatchObject({ positionX: null, positionY: null });
     expect(nodeInputSchema.parse(node({ positionX: 10.5, positionY: -3 }))).toMatchObject({ positionX: 10.5, positionY: -3 });

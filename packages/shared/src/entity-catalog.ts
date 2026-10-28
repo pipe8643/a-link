@@ -9,6 +9,7 @@
  * (ver docs/01-verificacion-zoomcharts.md §2: algunas formas no son nativas para nodos de NetChart).
  */
 import { z } from "zod";
+import { isSafeHttpUrl } from "./safe-input.js";
 
 export const ENTITY_TYPE_IDS = [
   "person",
@@ -309,19 +310,10 @@ function fieldSchema(field: FieldDef): z.ZodType<string | undefined> {
   }
 
   if (field.kind === "url") {
-    // Solo http/https: bloquea javascript:, data:, file:, etc. (defensa XSS).
-    base = base.refine(
-      (v) => {
-        if (v === "") return true;
-        try {
-          const u = new URL(v);
-          return u.protocol === "http:" || u.protocol === "https:";
-        } catch {
-          return false;
-        }
-      },
-      { message: `${field.label}: debe ser una URL http o https válida.` },
-    );
+    // Solo http/https sin credenciales: bloquea javascript:, data:, file:, etc. (defensa XSS).
+    base = base.refine((v) => isSafeHttpUrl(v), {
+      message: `${field.label}: debe ser una URL http o https válida.`,
+    });
   }
 
   if (field.required) {

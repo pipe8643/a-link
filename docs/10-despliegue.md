@@ -61,9 +61,10 @@ toma del entorno (nunca está en el repositorio). Todos los datos son inventados
 ## 4. Nginx: lo que impone el borde
 
 - **Cabeceras y CSP** solo en las respuestas del frontend (la API pone las suyas con `helmet`: no hay duplicados):
-  `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:;
-  connect-src 'self' https://api.zoomcharts-cloud.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self';
-  form-action 'self'; frame-ancestors 'none'` en toda la aplicación **excepto** `/s` (visor de un grafo compartido), que
+  `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:;
+  font-src 'self' data:; connect-src 'self' https://api.zoomcharts-cloud.com; worker-src 'self' blob:; object-src 'none';
+  base-uri 'self'; form-action 'self'; frame-src 'none'; media-src 'none'; frame-ancestors 'none'` en toda la aplicación
+  **excepto** `/s` (visor de un grafo compartido), que
   usa `frame-ancestors *` y **no** envía `X-Frame-Options`, para poder incrustarlo en PowerPoint (complemento Web Viewer).
   Quien tiene el token ya podía abrir `/s` en una pestaña. Login, editor y API siguen sin poder incrustarse. La única
   conexión a terceros es la comprobación de licencia de ZoomCharts.
