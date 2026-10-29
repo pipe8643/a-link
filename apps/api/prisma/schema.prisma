@@ -43,6 +43,7 @@ model User {
   images        GraphImage[]
   shareLinks    ShareLink[]
   auditLogs     AuditLog[]
+  letterhead    UserLetterhead?
 
   @@map("users")
 }
@@ -260,6 +261,24 @@ model ShareLink {
   @@index([ownerId])
   @@map("share_links")
 }
+/// Membrete personal del visor HTML y de PowerPoint. Una imagen por cuenta; si no hay fila, el visor queda en blanco.
+model UserLetterhead {
+  userId    String   @id @db.Char(36)
+  /// image/jpeg | image/png | image/webp (detectado por la firma binaria).
+  mime      String   @db.VarChar(20)
+  width     Int
+  height    Int
+  size      Int
+  sha256    String   @db.VarChar(64)
+  /// Contenido. NUNCA se selecciona en listados ni se expone en JSON.
+  data      Bytes
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_letterheads")
+}
+
 model AuditLog {
   id           String   @id @default(uuid()) @db.Char(36)
   actorId      String?  @db.Char(36)

@@ -31,14 +31,14 @@ const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0
 const PNG_METADATA_CHUNKS = new Set(["eXIf", "tEXt", "iTXt", "zTXt", "tIME"]);
 const corrupt = (what: string) => new InvalidImageError("corrupt", `La imagen está dañada o incompleta (${what}).`);
 
-function checkDimensions(width: number, height: number): void {
+function checkDimensions(width: number, height: number, maxSide: number): void {
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) throw corrupt("dimensiones");
-  if (width > IMAGE_LIMITS.maxSide || height > IMAGE_LIMITS.maxSide) {
-    throw new InvalidImageError("dimensions", `La imagen no puede superar ${IMAGE_LIMITS.maxSide} × ${IMAGE_LIMITS.maxSide} px.`);
+  if (width > maxSide || height > maxSide) {
+    throw new InvalidImageError("dimensions", `La imagen no puede superar ${maxSide} × ${maxSide} px.`);
   }
 }
 
-function inspectPng(data: Buffer): ImageInfo {
+function inspectPng(data: Buffer, maxSide: number): ImageInfo {
   if (data.length < 33 || data.toString("latin1", 12, 16) !== "IHDR") throw corrupt("PNG");
   const width = data.readUInt32BE(16);
   const height = data.readUInt32BE(20);
@@ -57,14 +57,14 @@ function inspectPng(data: Buffer): ImageInfo {
     }
   }
   if (!sawEnd) throw corrupt("PNG sin final");
-  checkDimensions(width, height);
+  checkDimensions(width, height, maxSide);
   return { mime: "image/png", width, height };
 }
 
 /** Marcadores JPEG que pueden llevar metadatos personales: EXIF/XMP (APP1), IPTC (APP13) y comentarios. */
 const isJpegMetadataMarker = (marker: number): boolean => marker === 0xe1 || marker === 0xed || marker === 0xfe;
 
-function inspectJpeg(data: Buffer): ImageInfo {
+function inspectJpeg(data: Buffer, maxSide: number): ImageInfo {
   let pos = 2;
   let size: { width: number; height: number } | null = null;
   while (pos + 4 <= data.length) {
@@ -90,11 +90,11 @@ function inspectJpeg(data: Buffer): ImageInfo {
     pos += len;
   }
   if (!size) throw corrupt("JPEG sin dimensiones");
-  checkDimensions(size.width, size.height);
+  checkDimensions(size.width, size.height, maxSide);
   return { mime: "image/jpeg", ...size };
 }
 
-function inspectWebp(data: Buffer): ImageInfo {
+function inspectWebp(data: Buffer, maxSide: number): ImageInfo {
   if (data.length < 30) throw corrupt("WebP");
   const riffSize = data.readUInt32LE(4);
   if (riffSize + 8 > data.length + 1) throw corrupt("WebP truncado");
@@ -127,14 +127,14 @@ function inspectWebp(data: Buffer): ImageInfo {
     pos = body + len + (len % 2); // los fragmentos se alinean a 2 bytes
   }
   if (!found) throw corrupt("WebP sin dimensiones");
-  checkDimensions(width, height);
+  checkDimensions(width, height, maxSide);
   return { mime: "image/webp", width, height };
 }
 
 /** Devuelve el tipo REAL y las dimensiones, o lanza `InvalidImageError`. */
-export function inspectImage(data: Buffer): ImageInfo {
-  if (data.length >= 24 && data.subarray(0, 8).equals(PNG_SIGNATURE)) return inspectPng(data);
-  if (data.length >= 4 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return inspectJpeg(data);
-  if (data.length >= 12 && data.toString("latin1", 0, 4) === "RIFF" && data.toString("latin1", 8, 12) === "WEBP") return inspectWebp(data);
+export function inspectImage(data: Buffer, maxSide: number = IMAGE_LIMITS.maxSide): ImageInfo {
+  if (data.length >= 24 && data.subarray(0, 8).equals(PNG_SIGNATURE)) return inspectPng(data, maxSide);
+  if (data.length >= 4 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return inspectJpeg(data, maxSide);
+  if (data.length >= 12 && data.toString("latin1", 0, 4) === "RIFF" && data.toString("latin1", 8, 12) === "WEBP") return inspectWebp(data, maxSide);
   throw new InvalidImageError("unsupported", "El archivo no es una imagen PNG, JPEG o WebP válida.");
 }

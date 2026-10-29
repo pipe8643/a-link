@@ -1,15 +1,14 @@
 import { ENTITY_CATALOG, type GraphNodeData } from "@a-link/shared";
-import { Maximize, Maximize2, Minimize2, Moon, Sun } from "lucide-react";
+import { Maximize, Maximize2, Minimize2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { Brand } from "@/components/brand";
-import { useTheme } from "@/components/theme-provider";
+import { LetterheadFrame } from "@/branding/letterhead-frame";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime } from "@/lib/format";
 import { NetChartCanvas, type CanvasSelection, type NetChartCanvasHandle } from "../editor/net-chart-canvas";
 import { useGraphView } from "../editor/use-graph-view";
-import { type SharedGraph, SharedLinkError, fetchSharedGraph, fetchSharedImages } from "./queries";
+import { type SharedGraph, SharedLinkError, fetchSharedGraph, fetchSharedImages, fetchSharedLetterhead } from "./queries";
 import { ShareExplorePanel } from "./share-explore-panel";
 import { tokenFromHash } from "./share-link";
 
@@ -31,8 +30,8 @@ const EXPLORE_STATUS = {
  * (Web Viewer).
  */
 export function SharedViewPage() {
-  const { dark, toggle } = useTheme();
   const [state, setState] = useState<State>({ phase: "loading" });
+  const [letterheadSrc, setLetterheadSrc] = useState<string | undefined>();
   const canvasRef = useRef<NetChartCanvasHandle>(null);
 
   useEffect(() => {
@@ -45,10 +44,12 @@ export function SharedViewPage() {
     const urls: string[] = [];
     (async () => {
       try {
-        const graph = await fetchSharedGraph(token, controller.signal);
+        const [graph, customBg] = await Promise.all([fetchSharedGraph(token, controller.signal), fetchSharedLetterhead(token, controller.signal)]);
+        if (customBg) urls.push(customBg);
         const images = await fetchSharedImages(token, graph.doc.nodes.flatMap((n) => (n.imageId ? [n.imageId] : [])), controller.signal);
         urls.push(...images.values());
         if (controller.signal.aborted) return;
+        if (customBg) setLetterheadSrc(customBg);
         setState({ phase: "ready", graph, images });
       } catch (err) {
         if (controller.signal.aborted || (err instanceof DOMException && err.name === "AbortError")) return;
@@ -63,27 +64,7 @@ export function SharedViewPage() {
   }, []);
 
   return (
-    <div className="flex h-dvh flex-col bg-background text-foreground">
-      <header className="flex items-center gap-3 border-b px-4 py-2">
-        <Brand className="text-base [&_svg]:size-6" />
-        <div className="min-w-0 flex-1">
-          {state.phase === "ready" ? (
-            <>
-              <h1 className="truncate text-sm font-semibold">{state.graph.name}</h1>
-              <p className="text-xs text-muted-foreground">Vista interactiva de solo lectura · válido hasta {formatDateTime(state.graph.expiresAt)}</p>
-            </>
-          ) : (
-            <h1 className="text-sm font-semibold">Grafo compartido</h1>
-          )}
-        </div>
-        <Button type="button" variant="outline" size="sm" onClick={() => canvasRef.current?.fit()} disabled={state.phase !== "ready"}>
-          <Maximize aria-hidden="true" /> Ajustar a la vista
-        </Button>
-        <Button type="button" variant="ghost" size="icon" onClick={toggle} aria-label={dark ? "Tema claro" : "Tema oscuro"}>
-          {dark ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
-        </Button>
-      </header>
-
+    <LetterheadFrame src={letterheadSrc}>
       <main className="relative min-h-0 flex-1">
         {state.phase === "loading" && (
           <div className="grid h-full place-items-center p-6" role="status" aria-label="Cargando el grafo">
@@ -105,9 +86,24 @@ export function SharedViewPage() {
             )}
           </div>
         )}
-        {state.phase === "ready" && <SharedGraphExplorer graph={state.graph} images={state.images} dark={dark} canvasRef={canvasRef} />}
+        {state.phase === "ready" && <SharedGraphExplorer graph={state.graph} images={state.images} dark={false} canvasRef={canvasRef} />}
       </main>
-    </div>
+      <footer className="flex items-center gap-3 px-1 py-1">
+        <div className="min-w-0 flex-1">
+          {state.phase === "ready" ? (
+            <>
+              <h1 className="truncate text-sm font-semibold">{state.graph.name}</h1>
+              <p className="text-xs text-muted-foreground">Vista interactiva de solo lectura · válido hasta {formatDateTime(state.graph.expiresAt)}</p>
+            </>
+          ) : (
+            <h1 className="text-sm font-semibold">Grafo compartido</h1>
+          )}
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={() => canvasRef.current?.fit()} disabled={state.phase !== "ready"}>
+          <Maximize aria-hidden="true" /> Ajustar a la vista
+        </Button>
+      </footer>
+    </LetterheadFrame>
   );
 }
 

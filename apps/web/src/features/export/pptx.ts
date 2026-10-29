@@ -1,4 +1,6 @@
 import { ENTITY_CATALOG, RELATIONSHIP_LABELS_ES, type EntityShape, type GraphEdgeData, type GraphNodeData, type GraphSnapshot } from "@a-link/shared";
+import { LETTERHEAD_INSET, LETTERHEAD_MIME } from "@/branding/letterhead";
+import { apiBlob } from "@/lib/api";
 import { SHAPES } from "../editor/shapes";
 import { NODE_RADIUS } from "../editor/zoom-data";
 import { type Legend } from "./legend";
@@ -25,8 +27,18 @@ export function assertEditableSize(doc: GraphSnapshot): void {
 // Diapositiva panorámica 16:9 en pulgadas.
 const SLIDE_W = 13.333;
 const SLIDE_H = 7.5;
-const MARGIN = 0.4;
 const TITLE_H = 0.5;
+/** Márgenes de la diapositiva de instrucciones (sin membrete). */
+const MARGIN = 0.4;
+
+function slideFrame(): Box {
+  return {
+    x: SLIDE_W * LETTERHEAD_INSET.left,
+    y: SLIDE_H * LETTERHEAD_INSET.top,
+    w: SLIDE_W * (1 - LETTERHEAD_INSET.left - LETTERHEAD_INSET.right),
+    h: SLIDE_H * (1 - LETTERHEAD_INSET.top - LETTERHEAD_INSET.bottom),
+  };
+}
 /** Alto reservado a la leyenda: hasta dos filas de tipos de entidad y una de naturaleza de las relaciones. */
 const LEGEND_ROW = 0.24;
 const LEGEND_H = LEGEND_ROW * 3 + 0.06;
@@ -56,9 +68,10 @@ const LIVE_BAR_H = 0.5;
 
 /** Hueco de la diapositiva destinado al grafo (la imagen o las formas), según qué elementos se incluyan. */
 export function pptxContentBox(o: Pick<PptxCommon, "includeTitle" | "includeDate" | "includeLegend" | "note"> & { liveBar?: boolean }): Box {
-  const top = MARGIN + (o.includeTitle || o.includeDate || !!o.note ? TITLE_H + 0.1 : 0);
-  const bottom = SLIDE_H - MARGIN - (o.includeLegend ? LEGEND_H + 0.1 : 0) - (o.liveBar ? LIVE_BAR_H + 0.08 : 0);
-  return { x: MARGIN, y: top, w: SLIDE_W - 2 * MARGIN, h: bottom - top };
+  const frame = slideFrame();
+  const top = frame.y + (o.includeTitle || o.includeDate || !!o.note ? TITLE_H + 0.1 : 0);
+  const bottom = frame.y + frame.h - (o.includeLegend ? LEGEND_H + 0.1 : 0) - (o.liveBar ? LIVE_BAR_H + 0.08 : 0);
+  return { x: frame.x, y: top, w: frame.w, h: bottom - top };
 }
 
 export const pptxImageAspect = (o: Pick<PptxCommon, "includeTitle" | "includeDate" | "includeLegend" | "note"> & { liveBar?: boolean }) => {
@@ -79,6 +92,20 @@ type PptxModule = typeof import("pptxgenjs");
 type Pptx = InstanceType<PptxModule["default"]>;
 type Slide = ReturnType<Pptx["addSlide"]>;
 
+async function asPptxImage(bytes: ArrayBuffer, mime: string): Promise<string> {
+  return `${mime};base64,${toBase64(new Uint8Array(bytes))}`;
+}
+
+async function letterheadData(): Promise<string | null> {
+  try {
+    const custom = await apiBlob("/users/me/letterhead");
+    return asPptxImage(await custom.arrayBuffer(), custom.type || LETTERHEAD_MIME);
+  } catch {
+    /* sin membrete personal (404) o sin sesión: diapositiva en blanco */
+    return null;
+  }
+}
+
 async function newPresentation(common: PptxCommon): Promise<{ pptx: Pptx; slide: Slide }> {
   const PptxGenJS = (await import("pptxgenjs")).default;
   const pptx = new PptxGenJS();
@@ -90,33 +117,36 @@ async function newPresentation(common: PptxCommon): Promise<{ pptx: Pptx; slide:
   pptx.subject = "";
   pptx.revision = "1";
   const slide = pptx.addSlide();
+  const background = await letterheadData();
+  if (background) slide.background = { data: background };
 
+  const frame = slideFrame();
   const dateText = new Intl.DateTimeFormat("es", { dateStyle: "long" }).format(common.date);
   const metaText = [common.note ?? "", common.includeDate ? dateText : ""].filter(Boolean).join(" · ");
   const hasMeta = metaText !== "";
   const metaW = common.note ? 5.5 : 2.5;
   if (common.includeTitle) {
-    slide.addText(common.title, { x: MARGIN, y: MARGIN, w: SLIDE_W - 2 * MARGIN - (hasMeta ? metaW + 0.1 : 0), h: TITLE_H, fontFace: "Calibri", fontSize: 22, bold: true, color: "0F172A", valign: "middle", fit: "shrink" });
+    slide.addText(common.title, { x: frame.x, y: frame.y, w: frame.w - (hasMeta ? metaW + 0.1 : 0), h: TITLE_H, fontFace: "Calibri", fontSize: 22, bold: true, color: "0F172A", valign: "middle", fit: "shrink" });
   }
   if (hasMeta) {
-    slide.addText(metaText, { x: common.includeTitle ? SLIDE_W - MARGIN - metaW : MARGIN, y: MARGIN, w: metaW, h: TITLE_H, fontFace: "Calibri", fontSize: 11, color: "64748B", align: common.includeTitle ? "right" : "left", valign: "middle" });
+    slide.addText(metaText, { x: common.includeTitle ? frame.x + frame.w - metaW : frame.x, y: frame.y, w: metaW, h: TITLE_H, fontFace: "Calibri", fontSize: 11, color: "64748B", align: common.includeTitle ? "right" : "left", valign: "middle" });
   }
-  if (common.includeLegend) addLegend(pptx, slide, common.legend);
+  if (common.includeLegend) addLegend(pptx, slide, common.legend, frame);
   return { pptx, slide };
 }
 
-function addLegend(pptx: Pptx, slide: Slide, legend: Legend): void {
-  const maxX = SLIDE_W - MARGIN;
+function addLegend(pptx: Pptx, slide: Slide, legend: Legend, frame: Box): void {
+  const maxX = frame.x + frame.w;
   const textW = (s: string) => Math.min(2.6, 0.072 * s.length + 0.12);
-  let y = SLIDE_H - MARGIN - LEGEND_H;
-  let x = MARGIN;
+  let y = frame.y + frame.h - LEGEND_H;
+  let x = frame.x;
   // Tipos de entidad: se reparten en filas (con los 10 tipos hacen falta dos).
   for (const t of legend.types) {
     const label = `${t.name} (${t.count})`;
     const w = textW(label);
     const itemW = 0.2 + w + 0.2;
-    if (x > MARGIN && x + itemW > maxX) {
-      x = MARGIN;
+    if (x > frame.x && x + itemW > maxX) {
+      x = frame.x;
       y += LEGEND_ROW;
     }
     slide.addShape(pptx.ShapeType.ellipse, { x, y: y + 0.05, w: 0.16, h: 0.16, fill: { color: hex(t.color) }, line: { color: hex(t.color), width: 0.5 } });
@@ -125,7 +155,7 @@ function addLegend(pptx: Pptx, slide: Slide, legend: Legend): void {
   }
   // Naturaleza de las relaciones: fila propia.
   if (legend.types.length > 0) y += LEGEND_ROW;
-  let x2 = MARGIN;
+  let x2 = frame.x;
   for (const e of legend.evidence) {
     const label = `${e.name} (${e.count})`;
     const w = textW(label);

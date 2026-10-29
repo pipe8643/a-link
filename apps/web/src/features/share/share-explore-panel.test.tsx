@@ -36,4 +36,11 @@ describe("ShareExplorePanel", () => {
     expect(screen.getByText(/Arrastra las entidades/)).toBeInTheDocument();
     expect(screen.getByText(/Doble clic/)).toBeInTheDocument();
   });
+
+  it("va abajo a la izquierda para no tapar el encabezado del membrete", () => {
+    render(<Harness />);
+    const panel = screen.getByRole("complementary", { name: "Filtros del grafo" });
+    expect(panel).toHaveClass("bottom-3", "left-3");
+    expect(panel).not.toHaveClass("top-3");
+  });
 });

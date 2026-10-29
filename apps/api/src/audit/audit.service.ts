@@ -12,6 +12,8 @@ export type AuditAction =
   | "auth.session_revoked"
   | "auth.sessions_revoked_others"
   | "user.profile_updated"
+  | "letterhead.updated"
+  | "letterhead.deleted"
   | "folder.created"
   | "folder.updated"
   | "folder.deleted"

@@ -85,6 +85,23 @@ export async function fetchSharedGraph(token: string, signal?: AbortSignal): Pro
   return { name: body.name, expiresAt: body.expiresAt, doc: parsed.data };
 }
 
+/** Membrete personal del propietario. `null` si no tiene uno (el visor queda en blanco). 404 del token inválido también da `null`; el grafo ya habrá fallado. */
+export async function fetchSharedLetterhead(token: string, signal?: AbortSignal): Promise<string | null> {
+  try {
+    const res = await fetch(`${API_BASE}/shared/letterhead`, {
+      headers: { [SHARE_TOKEN_HEADER]: token, Accept: "*/*" },
+      credentials: "omit",
+      cache: "no-store",
+      ...(signal ? { signal } : {}),
+    });
+    if (!res.ok) return null;
+    return URL.createObjectURL(await res.blob());
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") throw err;
+    return null;
+  }
+}
+
 /** Descarga las imágenes de las entidades con el token y devuelve URL `blob:` por identificador. Las que fallen se omiten. */
 export async function fetchSharedImages(token: string, imageIds: readonly string[], signal?: AbortSignal): Promise<Map<string, string>> {
   const out = new Map<string, string>();

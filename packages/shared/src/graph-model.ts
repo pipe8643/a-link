@@ -37,6 +37,16 @@ export const IMAGE_LIMITS = {
   mimeTypes: ["image/jpeg", "image/png", "image/webp"] as const,
 } as const;
 
+/**
+ * Membrete del visor HTML (`/s`) y de las diapositivas PowerPoint. Una imagen por cuenta; si no hay, el visor queda
+ * en blanco. El cliente la re-codifica (sin EXIF); el servidor vuelve a inspeccionarla.
+ */
+export const LETTERHEAD_LIMITS = {
+  maxBytes: 2 * 1024 * 1024,
+  maxSide: 4096,
+  mimeTypes: ["image/jpeg", "image/png", "image/webp"] as const,
+} as const;
+
 // Sin caracteres de control (salvo salto de línea y tabulador en textos largos).
 const CONTROL_CHARS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const noControl = (v: string) => !CONTROL_CHARS.test(v);

@@ -3,7 +3,7 @@ import type { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import cookieParser from "cookie-parser";
 import { json, raw } from "express";
-import { IMAGE_LIMITS } from "@a-link/shared";
+import { IMAGE_LIMITS, LETTERHEAD_LIMITS } from "@a-link/shared";
 import helmet from "helmet";
 import type { NextFunction, Request, Response } from "express";
 import { SessionService } from "./auth/session.service.js";
@@ -26,6 +26,8 @@ const GRAPH_CONTENT_PATH = /^\/api\/v1\/graphs\/[^/]+\/content\/?$/;
 const EXPORT_UPLOAD_PATH = /^\/api\/v1\/graphs\/[^/]+\/exports\/?$/;
 /** `POST /api/v1/graphs/:id/images`: cuerpo binario (la imagen ya recortada; límite pequeño). */
 const IMAGE_UPLOAD_PATH = /^\/api\/v1\/graphs\/[^/]+\/images\/?$/;
+/** `PUT /api/v1/users/me/letterhead`: cuerpo binario (membrete personal; hasta 2 MB). */
+const LETTERHEAD_UPLOAD_PATH = /^\/api\/v1\/users\/me\/letterhead\/?$/;
 
 /**
  * Configuración común de la aplicación. Se usa tanto en `main.ts` como en las pruebas, de modo que las
@@ -113,6 +115,8 @@ export function configureApp(app: NestExpressApplication, config: AppConfig, opt
   app.use(EXPORT_UPLOAD_PATH, largeBodyIfSession(fileBody, "POST"));
   const imageBody = raw({ limit: IMAGE_LIMITS.maxBytes + 1024, type: () => true });
   app.use(IMAGE_UPLOAD_PATH, largeBodyIfSession(imageBody, "POST"));
+  const letterheadBody = raw({ limit: LETTERHEAD_LIMITS.maxBytes + 1024, type: () => true });
+  app.use(LETTERHEAD_UPLOAD_PATH, largeBodyIfSession(letterheadBody, "PUT"));
   app.useBodyParser("json", { limit: config.maxRequestBodyBytes });
 
   app.setGlobalPrefix(API_PREFIX);

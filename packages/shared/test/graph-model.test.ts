@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { GRAPH_LIMITS, IMAGE_LIMITS, edgeInputSchema, graphSnapshotSchema, nodeInputSchema } from "../src/index.js";
+import { GRAPH_LIMITS, IMAGE_LIMITS, LETTERHEAD_LIMITS, edgeInputSchema, graphSnapshotSchema, nodeInputSchema } from "../src/index.js";
 
 const node = (over: Record<string, unknown> = {}) => ({ id: randomUUID(), type: "person", label: "Ana", ...over });
 const edge = (sourceId: string, targetId: string, over: Record<string, unknown> = {}) => ({
@@ -163,5 +163,11 @@ describe("imageId de la entidad e IMAGE_LIMITS", () => {
     expect(IMAGE_LIMITS.maxBytes).toBeLessThanOrEqual(IMAGE_LIMITS.maxBytesPerUser);
     expect([...IMAGE_LIMITS.mimeTypes].sort()).toEqual(["image/jpeg", "image/png", "image/webp"]);
     expect(GRAPH_LIMITS.maxImagesPerGraph).toBeGreaterThan(0);
+  });
+
+  it("el membrete admite un 16:9 nítido (p. ej. 3840×2160) y cabe en el tope de subida de /api", () => {
+    expect(LETTERHEAD_LIMITS.maxSide).toBeGreaterThanOrEqual(3840);
+    expect(LETTERHEAD_LIMITS.maxBytes).toBeLessThanOrEqual(2 * 1024 * 1024);
+    expect([...LETTERHEAD_LIMITS.mimeTypes].sort()).toEqual(["image/jpeg", "image/png", "image/webp"]);
   });
 });

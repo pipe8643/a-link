@@ -24,7 +24,7 @@ export function ShareExplorePanel({ doc, graphView }: Props) {
   const summary = viewSummary(graphView, doc);
 
   return (
-    <aside aria-label="Filtros del grafo" className="absolute top-3 left-3 z-10 grid max-w-72 gap-2 rounded-lg border bg-card/95 p-3 text-sm shadow-lg backdrop-blur-sm">
+    <aside aria-label="Filtros del grafo" className="absolute bottom-3 left-3 z-10 grid max-w-72 gap-2 rounded-lg border bg-card/95 p-3 text-sm shadow-lg backdrop-blur-sm">
       <h2 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Categorías</h2>
       <div className="flex flex-wrap gap-1.5">
         {types.map((t) => {

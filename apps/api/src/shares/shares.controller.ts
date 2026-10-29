@@ -70,4 +70,10 @@ export class SharedController {
     noIndex(res);
     return sendImage(req, res, await this.shares.viewImage(token, imageId));
   }
+
+  @Get("letterhead")
+  async letterhead(@Headers(SHARE_TOKEN_HEADER) token: string | undefined, @Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<StreamableFile | undefined> {
+    noIndex(res);
+    return sendImage(req, res, await this.shares.viewLetterhead(token));
+  }
 }

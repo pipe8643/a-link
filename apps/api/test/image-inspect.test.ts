@@ -35,6 +35,12 @@ describe("inspección estructural de imágenes subidas", () => {
     expect(reason(makeCleanPng())).toBeNull();
   });
 
+  it("acepta un lado mayor cuando se pide (membrete) y sigue rechazando el tope de entidades", () => {
+    const wide = makeCleanPng(600, 400);
+    expect(reason(wide)).toBe("dimensions");
+    expect(inspectImage(wide, 4096)).toEqual({ mime: "image/png", width: 600, height: 400 });
+  });
+
   it("rechaza dimensiones fuera de límite y archivos dañados o truncados", () => {
     expect(reason(makeCleanPng(IMAGE_LIMITS.maxSide + 1, 4))).toBe("dimensions");
     expect(reason(makeCleanJpeg(4, IMAGE_LIMITS.maxSide + 1))).toBe("dimensions");

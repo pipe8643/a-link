@@ -24,6 +24,9 @@ secrets/
 /apps/*/storage/
 .storage/
 
+# Membretes locales (cada cuenta sube el suyo; no versionar)
+apps/web/public/letterhead-*
+
 # Pruebas
 playwright-report/
 playwright-report-stack/

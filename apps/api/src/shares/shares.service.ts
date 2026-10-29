@@ -98,7 +98,7 @@ export class SharesService {
     if (typeof token !== "string" || !TOKEN_PATTERN.test(token)) throw notFound();
     const row = await this.prisma.client.shareLink.findFirst({
       where: { tokenHash: hashToken(token), revokedAt: null, expiresAt: { gt: new Date() }, graph: { deletedAt: null } },
-      select: { id: true, graphId: true, expiresAt: true, graph: { select: { name: true } } },
+      select: { id: true, ownerId: true, graphId: true, expiresAt: true, graph: { select: { name: true } } },
     });
     if (!row) throw notFound();
     return row;
@@ -150,6 +150,17 @@ export class SharesService {
     const link = await this.resolve(token);
     const row = await this.prisma.client.graphImage.findFirst({
       where: { id: imageId, graphId: link.graphId, nodes: { some: {} } },
+      select: { mime: true, sha256: true, data: true },
+    });
+    if (!row) throw notFound();
+    return { mime: row.mime, etag: `"${row.sha256}"`, data: Buffer.from(row.data) };
+  }
+
+  /** Membrete del PROPIETARIO del grafo compartido. Si no tiene uno personal, 404 (el visor queda en blanco). */
+  async viewLetterhead(token: string | undefined) {
+    const link = await this.resolve(token);
+    const row = await this.prisma.client.userLetterhead.findUnique({
+      where: { userId: link.ownerId },
       select: { mime: true, sha256: true, data: true },
     });
     if (!row) throw notFound();

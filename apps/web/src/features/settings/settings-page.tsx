@@ -18,6 +18,7 @@ import {
   useSessions,
   useUpdateProfile,
 } from "@/features/auth/queries";
+import { LetterheadCard } from "./letterhead-card";
 import { applyServerErrors, describeError } from "@/lib/form-errors";
 import { describeUserAgent, formatDateTime, formatRelative } from "@/lib/format";
 import {
@@ -223,6 +224,7 @@ export function SettingsPage() {
     <div className="grid max-w-3xl gap-6">
       <PageHeader title="Ajustes" description="Tu perfil, tu seguridad y tus preferencias." />
       <ProfileCard />
+      <LetterheadCard />
       <PasswordCard />
       <SessionsCard />
       <AppearanceCard />
