@@ -18,7 +18,7 @@
   "dependencies": {
     "@a-link/shared": "0.1.0",
     "@dvsl/zoomcharts": "1.21.21",
-    "@hookform/resolvers": "5.9.2",
+    "@hookform/resolvers": "6.0.0",
     "@mediapipe/tasks-vision": "1.1.1",
     "@tanstack/react-query": "5.104.5",
     "class-variance-authority": "0.7.1",
