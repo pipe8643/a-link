@@ -188,25 +188,24 @@ export async function buildPptxImage(common: PptxCommon, image: { bytes: Uint8Ar
   return output(pptx);
 }
 
-export interface LiveShare {
-  url: string;
-  expiresAt: Date;
+/** Nombre del HTML portable que viaja en el mismo ZIP que este PowerPoint. */
+export interface LiveBundle {
+  htmlFileName: string;
 }
 
 const LIVE_STEPS = [
-  "Este archivo NO contiene un gráfico ZoomCharts ejecutable: PowerPoint no puede dibujarlo sin un servidor.",
-  "Para verlo en vivo: Insertar → Complementos de Office → busca «Web Viewer» → inserta el complemento.",
-  "Pega la URL completa (incluido lo que va detrás de #) en Web Viewer. Sin el fragmento el visor no autoriza.",
-  "Hace falta red y un certificado de confianza. El autofirmado de localhost suele fallar en Office: usa un origen https público o instala el certificado.",
-  "En el visor puedes filtrar categorías, arrastrar las entidades (con las animaciones de ZoomCharts) y hacer doble clic en un nodo principal para retraer o extender sus vecinos.",
-  "Si revocas el enlace o caduca, la diapositiva incrustada deja de cargar. Quien tenga la URL ve el grafo guardado en ese momento (no una foto congelada), sin notas ni campos sensibles.",
+  "En el ZIP hay dos ficheros: este PowerPoint y un HTML con el grafo interactivo.",
+  "Extrae ambos en la misma carpeta. No hace falta A-Link, Docker ni conexión a internet.",
+  "Abre el HTML con cualquier navegador (doble clic), o pulsa «Abrir el gráfico interactivo» en la diapositiva anterior.",
+  "En el visor puedes filtrar categorías, arrastrar entidades, marcar un nodo como principal y retraer o extender vecinos.",
+  "El HTML es de solo lectura: no incluye notas ni campos sensibles. Si mueves el PowerPoint, lleva el HTML junto a él.",
 ];
 
 /**
- * PowerPoint «interactivo»: vista previa raster + hipervínculo a un visor de solo lectura (`/s#token`) e
- * instrucciones para el complemento Web Viewer. El .pptx no ejecuta ZoomCharts por sí solo.
+ * PowerPoint «interactivo»: vista previa + hipervínculo al HTML portable (mismo ZIP). El .pptx no ejecuta el visor
+ * por sí solo; el HTML sí, en cualquier PC, sin servidor.
  */
-export async function buildPptxLive(common: PptxCommon, image: { bytes: Uint8Array; mime: "image/png" | "image/jpeg"; width: number; height: number } | null, live: LiveShare): Promise<Uint8Array> {
+export async function buildPptxLive(common: PptxCommon, image: { bytes: Uint8Array; mime: "image/png" | "image/jpeg"; width: number; height: number } | null, live: LiveBundle): Promise<Uint8Array> {
   const withBar = { ...common, liveBar: true as const };
   const { pptx, slide } = await newPresentation(withBar);
   const box = pptxContentBox(withBar);
@@ -236,8 +235,7 @@ export async function buildPptxLive(common: PptxCommon, image: { bytes: Uint8Arr
     });
   }
   const barY = box.y + box.h + 0.08;
-  const expiry = new Intl.DateTimeFormat("es", { dateStyle: "long", timeStyle: "short" }).format(live.expiresAt);
-  slide.addText(`Abrir el gráfico interactivo · válido hasta ${expiry}`, {
+  slide.addText("Abrir el gráfico interactivo (HTML en la misma carpeta)", {
     x: box.x,
     y: barY,
     w: box.w,
@@ -249,26 +247,26 @@ export async function buildPptxLive(common: PptxCommon, image: { bytes: Uint8Arr
     align: "center",
     valign: "middle",
     fill: { color: "1D4ED8" },
-    hyperlink: { url: live.url },
+    hyperlink: { url: encodeURI(live.htmlFileName) },
   });
 
   const how = pptx.addSlide();
-  how.addText("Cómo incrustarlo en PowerPoint", { x: MARGIN, y: MARGIN, w: SLIDE_W - 2 * MARGIN, h: 0.5, fontFace: "Calibri", fontSize: 22, bold: true, color: "0F172A" });
+  how.addText("Cómo abrir el visor en cualquier PC", { x: MARGIN, y: MARGIN, w: SLIDE_W - 2 * MARGIN, h: 0.5, fontFace: "Calibri", fontSize: 22, bold: true, color: "0F172A" });
   how.addText(
     LIVE_STEPS.map((s, i) => ({ text: `${i + 1}. ${s}`, options: { breakLine: true, paraSpaceAfter: 10 } })),
     { x: MARGIN, y: MARGIN + 0.6, w: SLIDE_W - 2 * MARGIN, h: 4.2, fontFace: "Calibri", fontSize: 14, color: "0F172A", valign: "top" },
   );
-  how.addText(live.url, {
+  how.addText(live.htmlFileName, {
     x: MARGIN,
     y: SLIDE_H - MARGIN - 1.1,
     w: SLIDE_W - 2 * MARGIN,
     h: 0.55,
     fontFace: "Consolas",
-    fontSize: 11,
+    fontSize: 14,
     color: "1D4ED8",
-    hyperlink: { url: live.url },
+    hyperlink: { url: encodeURI(live.htmlFileName) },
   });
-  how.addText("Copia la URL completa, incluido el fragmento detrás de #. Sin él el visor no abre el grafo.", {
+  how.addText("Deja este HTML en la misma carpeta que el PowerPoint. Se abre con el navegador, sin servidor.", {
     x: MARGIN,
     y: SLIDE_H - MARGIN - 0.5,
     w: SLIDE_W - 2 * MARGIN,

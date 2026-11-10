@@ -13,7 +13,7 @@ export const FORMAT_LABELS: Readonly<Record<ExportFormat, string>> = {
   pdf: "PDF (documento con título y leyenda)",
   "pptx-image": "PowerPoint con imagen (no editable)",
   "pptx-editable": "PowerPoint editable (formas y líneas)",
-  "pptx-live": "PowerPoint interactivo (enlace de solo lectura + Web Viewer)",
+  "pptx-live": "PowerPoint interactivo (visor HTML, sin servidor)",
 };
 
 export const FORMAT_EXTENSION: Readonly<Record<ExportFormat, string>> = {
@@ -22,7 +22,7 @@ export const FORMAT_EXTENSION: Readonly<Record<ExportFormat, string>> = {
   pdf: "pdf",
   "pptx-image": "pptx",
   "pptx-editable": "pptx",
-  "pptx-live": "pptx",
+  "pptx-live": "zip",
 };
 
 export const FORMAT_MIME: Readonly<Record<ExportFormat, string>> = {
@@ -31,7 +31,7 @@ export const FORMAT_MIME: Readonly<Record<ExportFormat, string>> = {
   pdf: "application/pdf",
   "pptx-image": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   "pptx-editable": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  "pptx-live": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "pptx-live": "application/zip",
 };
 
 export const ASPECTS = ["fit", "16:9", "4:3", "1:1", "a4-landscape", "a4-portrait"] as const;

@@ -26,10 +26,10 @@ import {
   defaultExportOptions,
 } from "./export-options";
 import { graphImageUrl } from "../images/queries";
-import { createShare } from "../share/queries";
-import { buildShareUrl } from "../share/share-link";
 import { EmptyGraphError, runExport } from "./run-export";
-import { ExportTooLargeError, PPTX_EDITABLE_LIMITS, type LiveShare } from "./pptx";
+import { ExportTooLargeError, PPTX_EDITABLE_LIMITS } from "./pptx";
+import { apiBlob } from "@/lib/api";
+import { blobToDataUrl } from "./standalone-images";
 
 interface Props {
   open: boolean;
@@ -82,7 +82,6 @@ function ExportForm({ onClose, graphName, doc: fullDoc, viewDoc, auraMode = "non
   // Si el formato elegido no admite el fondo actual, se vuelve a uno válido.
   const background: Background = backgrounds.includes(options.background) ? options.background : "white";
   const tooBigForEditable = options.format === "pptx-editable" && (doc.nodes.length > PPTX_EDITABLE_LIMITS.maxNodes || doc.edges.length > PPTX_EDITABLE_LIMITS.maxEdges);
-  const liveNeedsGraph = options.format === "pptx-live" && !graphId;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,11 +91,14 @@ function ExportForm({ onClose, graphName, doc: fullDoc, viewDoc, auraMode = "non
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      let liveShare: LiveShare | undefined;
+      let letterheadDataUrl: string | null | undefined;
       if (options.format === "pptx-live") {
-        if (!graphId) throw new Error("El PowerPoint interactivo necesita un grafo guardado.");
-        const created = await createShare(graphId, 7, controller.signal);
-        liveShare = { url: buildShareUrl(window.location.origin, created.token), expiresAt: new Date(created.share.expiresAt) };
+        try {
+          letterheadDataUrl = await blobToDataUrl(await apiBlob("/users/me/letterhead", { signal: controller.signal }));
+        } catch (err) {
+          if (err instanceof DOMException && err.name === "AbortError") throw err;
+          letterheadDataUrl = null;
+        }
       }
       const result = await runExport({
         doc,
@@ -106,7 +108,7 @@ function ExportForm({ onClose, graphName, doc: fullDoc, viewDoc, auraMode = "non
         auraMode: halos && options.format !== "pptx-editable" ? auraMode : "none",
         ...(viewNote ? { viewNote } : {}),
         ...(graphId ? { imageUrl: (n) => (n.imageId ? graphImageUrl(graphId, n.imageId) : undefined) } : {}),
-        ...(liveShare ? { liveShare } : {}),
+        ...(letterheadDataUrl !== undefined ? { letterheadDataUrl } : {}),
         signal: controller.signal,
       });
       downloadBytes(result.bytes, result.mime, result.fileName);
@@ -224,14 +226,9 @@ function ExportForm({ onClose, graphName, doc: fullDoc, viewDoc, auraMode = "non
       {options.format === "pptx-image" && <p className="text-xs text-muted-foreground">La imagen se inserta tal cual: no se puede editar entidad por entidad. Para eso usa «PowerPoint editable».</p>}
       {options.format === "pptx-live" && (
         <p className="text-xs text-muted-foreground">
-          Se crea un enlace de solo lectura (7 días) y un PowerPoint con la vista previa y la URL. El gráfico vivo se ve con el
-          complemento «Web Viewer»: puedes filtrar categorías, arrastrar nodos y retraer o extender vecinos con doble clic.
-          Hace falta HTTPS con un certificado de confianza. El archivo no contiene ZoomCharts ejecutable.
-        </p>
-      )}
-      {liveNeedsGraph && (
-        <p role="alert" className="text-sm text-destructive">
-          El PowerPoint interactivo necesita un grafo guardado (con identificador) para crear el enlace.
+          Se descarga un ZIP con el PowerPoint y un HTML autocontenido. El visor se abre en cualquier navegador, sin A-Link,
+          Docker ni internet. Puedes filtrar categorías, arrastrar nodos y retraer o extender vecinos. No incluye notas ni
+          campos sensibles.
         </p>
       )}
       {options.format === "pptx-editable" && (
@@ -246,7 +243,7 @@ function ExportForm({ onClose, graphName, doc: fullDoc, viewDoc, auraMode = "non
         </p>
       )}
 
-      {graphId && (
+      {graphId && options.format !== "pptx-live" && (
         <div className="grid gap-1">
           <Check label="Guardar una copia en mi cuenta (Exportaciones)" checked={saveCopy} onChange={setSaveCopy} />
           <p className="pl-6 text-xs text-muted-foreground">
@@ -268,7 +265,7 @@ function ExportForm({ onClose, graphName, doc: fullDoc, viewDoc, auraMode = "non
         >
           {busy ? "Cancelar" : "Cerrar"}
         </Button>
-        <Button type="submit" disabled={busy || doc.nodes.length === 0 || tooBigForEditable || liveNeedsGraph}>
+        <Button type="submit" disabled={busy || doc.nodes.length === 0 || tooBigForEditable}>
           {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Download aria-hidden="true" />}
           {busy ? "Generando…" : "Exportar"}
         </Button>

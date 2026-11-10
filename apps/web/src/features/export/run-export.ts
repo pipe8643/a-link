@@ -1,4 +1,5 @@
 import type { GraphSnapshot } from "@a-link/shared";
+import JSZip from "jszip";
 import type { AuraMode } from "../editor/auras";
 import {
   FORMAT_EXTENSION,
@@ -13,10 +14,13 @@ import {
 import { type Positions, contentAspect, resolvePositions } from "./layout";
 import { buildLegend } from "./legend";
 import { planPdf } from "./pdf";
-import { buildPptxEditable, buildPptxImage, buildPptxLive, type LiveShare, pptxImageAspect } from "./pptx";
+import { buildPptxEditable, buildPptxImage, buildPptxLive, pptxImageAspect } from "./pptx";
 import { type ImageUrlResolver } from "../editor/zoom-data";
 import { loadMaskedNodeImages } from "./node-images";
 import { renderGraphImage } from "./render-image";
+import { buildStandaloneHtml } from "./standalone-html";
+import { loadNodeDataUrls } from "./standalone-images";
+import { toStandalonePayload } from "./standalone-payload";
 
 export class EmptyGraphError extends Error {
   constructor() {
@@ -37,8 +41,8 @@ export interface ExportInput {
   imageUrl?: ImageUrlResolver;
   /** Aviso visible en PDF/PowerPoint cuando no se exporta el grafo completo (p. ej. «Vista filtrada: 3 de 10 entidades»). */
   viewNote?: string;
-  /** Enlace de solo lectura (solo `pptx-live`). Lo crea el diálogo de exportar; aquí no se llama a la API. */
-  liveShare?: LiveShare;
+  /** Membrete del visor HTML portable (`data:`). Si falta, el visor queda en blanco. */
+  letterheadDataUrl?: string | null;
   signal?: AbortSignal;
   now?: Date;
 }
@@ -109,7 +113,6 @@ export async function runExport(input: ExportInput): Promise<ExportResult> {
       return finish(await buildPptxEditable(common, doc, positions, await loadMaskedNodeImages(doc, imageUrl, signal)));
     }
     case "pptx-live": {
-      if (!input.liveShare) throw new Error("Falta el enlace de solo lectura para el PowerPoint interactivo.");
       const liveCommon = { ...common, liveBar: true as const };
       const size = sizeForRatio(pptxImageAspect(liveCommon), options.resolution);
       if (size.reduced) notes.push(`Se redujo la resolución de la imagen a ${size.pixelWidth}×${size.pixelHeight} px (límite del navegador).`);
@@ -119,9 +122,27 @@ export async function runExport(input: ExportInput): Promise<ExportResult> {
         preview = { bytes: img.bytes, mime: img.mime, width: img.width, height: img.height };
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") throw err;
-        notes.push("No se pudo incluir la vista previa del lienzo; el enlace interactivo sí está en el archivo.");
+        notes.push("No se pudo incluir la vista previa del lienzo; el visor HTML sí está en el ZIP.");
       }
-      return finish(await buildPptxLive(common, preview, input.liveShare));
+      const base = safeFileName(options.fileName, safeFileName(graphName));
+      const htmlFileName = `${base}.html`;
+      const images = await loadNodeDataUrls(doc, imageUrl, signal);
+      const html = buildStandaloneHtml(
+        toStandalonePayload(doc, positions, images, {
+          title,
+          generatedAt: now,
+          letterhead: input.letterheadDataUrl ?? null,
+          edgeLabels: options.edgeLabels,
+          ...(input.viewNote ? { note: input.viewNote } : {}),
+        }),
+      );
+      const pptx = await buildPptxLive(common, preview, { htmlFileName });
+      const zip = new JSZip();
+      zip.file(`${base}.pptx`, pptx);
+      zip.file(htmlFileName, html);
+      const packed = await zip.generateAsync({ type: "uint8array" });
+      notes.push("El ZIP incluye el PowerPoint y un HTML que se abre en cualquier navegador, sin A-Link ni Docker.");
+      return { bytes: packed, mime: FORMAT_MIME[options.format], fileName: `${base}.zip`, notes };
     }
   }
 }

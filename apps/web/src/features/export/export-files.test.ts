@@ -101,17 +101,17 @@ describe("PowerPoint", () => {
     expect(pptxImageAspect({ includeTitle: false, includeDate: false, includeLegend: false })).toBeLessThan(pptxImageAspect({ includeTitle: true, includeDate: true, includeLegend: true }));
   });
 
-  it("PowerPoint interactivo: vista previa, hipervínculo e instrucciones; el hueco se reduce por la barra", async () => {
-    const token = "E".repeat(43);
-    const url = `https://app.example/s#${token}`;
+  it("PowerPoint interactivo: vista previa, hipervínculo al HTML portable e instrucciones; el hueco se reduce por la barra", async () => {
     expect(pptxContentBox({ includeTitle: true, includeDate: true, includeLegend: true, liveBar: true }).h).toBeLessThan(pptxContentBox({ includeTitle: true, includeDate: true, includeLegend: true }).h);
-    const bytes = await buildPptxLive(common(sample()), { bytes: PNG_1X1, mime: "image/png", width: 1200, height: 700 }, { url, expiresAt: new Date("2026-04-01T12:00:00Z") });
+    const bytes = await buildPptxLive(common(sample()), { bytes: PNG_1X1, mime: "image/png", width: 1200, height: 700 }, { htmlFileName: "Informe prueba.html" });
     const zip = await JSZip.loadAsync(bytes);
     expect(Object.keys(zip.files).some((f) => f.startsWith("ppt/media/"))).toBe(true);
-    expect(await zip.file("ppt/slides/slide2.xml")!.async("string")).toContain("Web Viewer");
-    const all = (await zip.file("ppt/slides/_rels/slide1.xml.rels")!.async("string")) + (await zip.file("ppt/slides/slide2.xml")!.async("string"));
-    expect(all).toContain(token);
-    expect(await zip.file("docProps/core.xml")!.async("string")).not.toContain(token);
+    const slide2 = await zip.file("ppt/slides/slide2.xml")!.async("string");
+    expect(slide2).toContain("cualquier PC");
+    expect(slide2).not.toContain("Web Viewer");
+    const all = (await zip.file("ppt/slides/_rels/slide1.xml.rels")!.async("string")) + slide2;
+    expect(all).toContain("Informe%20prueba.html");
+    expect(await zip.file("docProps/core.xml")!.async("string")).toContain("A-Link");
   });
 
   it("PowerPoint con imagen: un .pptx válido (ZIP OOXML) con la imagen incrustada", async () => {
@@ -221,8 +221,26 @@ describe("runExport", () => {
     expect(res.fileName).toBe("Mi grafo.pptx");
   });
 
-  it("PowerPoint interactivo exige el enlace (la generación del PPTX con URL se cubre en buildPptxLive; aquí no se pinta el lienzo)", async () => {
-    await expect(runExport({ doc: sample(), graphName: "G", options: { ...defaultExportOptions("G", false), format: "pptx-live" } })).rejects.toThrow(/enlace de solo lectura/);
+  it("PowerPoint interactivo genera un ZIP con el PPTX y un HTML autocontenido, sin servidor", async () => {
+    const secret = node("Ana", "person", { notes: "SECRETO", metadata: { internalId: "oculto" } });
+    const doc: GraphSnapshot = { nodes: [secret], edges: [] };
+    const res = await runExport({ doc, graphName: "Caso vivo", options: { ...defaultExportOptions("Caso vivo", false), format: "pptx-live" }, now: new Date("2026-03-04T12:00:00Z") });
+    expect(res.fileName).toBe("Caso vivo.zip");
+    expect(res.mime).toBe("application/zip");
+    const zip = await JSZip.loadAsync(res.bytes);
+    expect(zip.file("Caso vivo.pptx")).not.toBeNull();
+    const html = await zip.file("Caso vivo.html")!.async("string");
+    expect(html).toContain("Ana");
+    expect(html).toContain("boot(");
+    expect(html).not.toContain("SECRETO");
+    expect(html).not.toContain("oculto");
+    expect(html).not.toContain("/s#");
+    const pptx = await JSZip.loadAsync(await zip.file("Caso vivo.pptx")!.async("uint8array"));
+    const rels =
+      (await pptx.file("ppt/slides/_rels/slide1.xml.rels")!.async("string")) +
+      (await pptx.file("ppt/slides/_rels/slide2.xml.rels")!.async("string"));
+    expect(rels).toContain('Target="Caso%20vivo.html"');
+    expect(rels).toContain('TargetMode="External"');
   });
 });
 

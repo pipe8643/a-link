@@ -4,13 +4,17 @@ import { createRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ExportDialog } from "./export-dialog";
 
-const mocks = vi.hoisted(() => ({ runExport: vi.fn(), downloadBytes: vi.fn(), toast: vi.fn(), warning: vi.fn(), uploadExport: vi.fn(), createShare: vi.fn() }));
+const mocks = vi.hoisted(() => ({ runExport: vi.fn(), downloadBytes: vi.fn(), toast: vi.fn(), warning: vi.fn(), uploadExport: vi.fn(), createShare: vi.fn(), apiBlob: vi.fn() }));
 
 vi.mock("./run-export", async (orig) => ({ ...(await orig<typeof import("./run-export")>()), runExport: mocks.runExport }));
 vi.mock("./download", () => ({ downloadBytes: mocks.downloadBytes }));
 vi.mock("sonner", () => ({ toast: { success: mocks.toast, warning: mocks.warning } }));
 vi.mock("../exports/queries", () => ({ uploadExport: mocks.uploadExport }));
 vi.mock("../share/queries", () => ({ createShare: mocks.createShare }));
+vi.mock("@/lib/api", async (orig) => {
+  const real = await orig<typeof import("@/lib/api")>();
+  return { ...real, apiBlob: mocks.apiBlob };
+});
 
 const doc = { nodes: [nodeInputSchema.parse({ id: crypto.randomUUID(), type: "person", label: "Ana" })], edges: [] };
 
@@ -23,6 +27,7 @@ const exportButton = () => screen.getByRole("button", { name: "Exportar" });
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.apiBlob.mockRejectedValue(new Error("sin membrete"));
 });
 
 describe("ExportDialog", () => {
@@ -230,32 +235,18 @@ describe("ExportDialog · copia privada en la cuenta", () => {
 });
 
 describe("ExportDialog · PowerPoint interactivo", () => {
-  const TOKEN = "C".repeat(43);
-  const pptx = { bytes: new Uint8Array([1]), mime: "application/vnd.openxmlformats-officedocument.presentationml.presentation", fileName: "Mi grafo.pptx", notes: [] };
+  const zip = { bytes: new Uint8Array([1]), mime: "application/zip", fileName: "Mi grafo.zip", notes: [] };
 
-  it("sin graphId no se puede exportar en este formato", () => {
-    setup();
-    fireEvent.change(screen.getByLabelText("Formato"), { target: { value: "pptx-live" } });
-    expect(exportButton()).toBeDisabled();
-    expect(screen.getByRole("alert")).toHaveTextContent(/grafo guardado/);
-    expect(mocks.createShare).not.toHaveBeenCalled();
-  });
-
-  it("crea el enlace de 7 días y se lo pasa a runExport", async () => {
-    mocks.createShare.mockResolvedValue({
-      token: TOKEN,
-      share: { id: "s1", createdAt: "2026-03-01T00:00:00Z", expiresAt: "2026-03-08T00:00:00Z", revokedAt: null, lastViewedAt: null, viewCount: 0, status: "active" },
-    });
-    mocks.runExport.mockResolvedValue(pptx);
+  it("no crea un enlace de solo lectura: el visor va en el ZIP", async () => {
+    mocks.runExport.mockResolvedValue(zip);
     setup({ graphId: "g1" });
     fireEvent.change(screen.getByLabelText("Formato"), { target: { value: "pptx-live" } });
+    expect(exportButton()).toBeEnabled();
+    expect(screen.queryByRole("checkbox", { name: /Guardar una copia/ })).toBeNull();
     fireEvent.click(exportButton());
     await waitFor(() => expect(mocks.runExport).toHaveBeenCalled());
-    expect(mocks.createShare).toHaveBeenCalledWith("g1", 7, expect.any(AbortSignal));
-    expect(mocks.runExport.mock.calls[0]![0].liveShare).toEqual({
-      url: `${window.location.origin}/s#${TOKEN}`,
-      expiresAt: new Date("2026-03-08T00:00:00Z"),
-    });
+    expect(mocks.createShare).not.toHaveBeenCalled();
+    expect(mocks.runExport.mock.calls[0]![0].liveShare).toBeUndefined();
     expect(mocks.downloadBytes).toHaveBeenCalled();
   });
 });

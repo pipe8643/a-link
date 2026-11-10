@@ -4,7 +4,7 @@ import { api, createGraphViaApi, registerViaApi } from "./helpers";
 
 /**
  * Enlaces de solo lectura y PowerPoint interactivo. El visor `/s#token` no usa la sesión; el token viaja en el
- * fragmento. PowerPoint interactivo crea un enlace de 7 días y un .pptx con la URL (no un gráfico ZoomCharts ejecutable).
+ * fragmento. PowerPoint interactivo descarga un ZIP con un HTML autocontenido (sin servidor).
  */
 test.describe("compartir grafo", () => {
   test("crear enlace, verlo sin sesión, revocar y dejar de funcionar; B no lista los de A", async ({ page, browser }) => {
@@ -63,13 +63,13 @@ test.describe("compartir grafo", () => {
     void email;
   });
 
-  test("PowerPoint interactivo crea el enlace y un .pptx con la URL (sin el token en metadatos)", async ({ page }) => {
+  test("PowerPoint interactivo descarga un ZIP con HTML portable, sin crear enlace", async ({ page }) => {
     test.setTimeout(90_000);
     await registerViaApi(page, "sh2");
     const id = await createGraphViaApi(page, "Informe vivo");
     const put = await api(page.request, "PUT", `/graphs/${id}/content`, {
       expectedRevision: 1,
-      nodes: [{ id: crypto.randomUUID(), type: "person", label: "Nodo", description: "", notes: "", tags: [], metadata: {}, imageId: null, positionX: 0, positionY: 0 }],
+      nodes: [{ id: crypto.randomUUID(), type: "person", label: "Nodo", description: "", notes: "SECRETO", tags: [], metadata: {}, imageId: null, positionX: 0, positionY: 0 }],
       edges: [],
     });
     expect(put.status()).toBe(200);
@@ -78,19 +78,25 @@ test.describe("compartir grafo", () => {
     const dialog = page.getByRole("dialog", { name: "Exportar grafo" });
     await dialog.getByLabel("Formato").selectOption("pptx-live");
     const [download] = await Promise.all([page.waitForEvent("download"), dialog.getByRole("button", { name: "Exportar", exact: true }).click()]);
+    expect(download.suggestedFilename()).toMatch(/\.zip$/);
     const bytes = readFileSync(await download.path());
     const JSZip = (await import("jszip")).default;
     const zip = await JSZip.loadAsync(bytes);
-    expect(zip.file("ppt/slides/slide2.xml")).not.toBeNull();
-    const xml = (await zip.file("ppt/slides/slide2.xml")!.async("string")) + (await zip.file("ppt/slides/_rels/slide1.xml.rels")!.async("string"));
-    expect(xml).toContain("Web Viewer");
-    expect(xml).toMatch(/\/s#/);
-    const core = await zip.file("docProps/core.xml")!.async("string");
-    expect(core).toContain("A-Link");
-    const token = /\/s#([A-Za-z0-9_-]{43})/.exec(xml)?.[1];
-    expect(token).toBeDefined();
-    expect(core).not.toContain(token);
-    const shares = await (await api(page.request, "GET", `/graphs/${id}/shares`)).json() as { items: unknown[] };
-    expect(shares.items.length).toBeGreaterThanOrEqual(1);
+    const htmlName = Object.keys(zip.files).find((f) => f.endsWith(".html"));
+    const pptxName = Object.keys(zip.files).find((f) => f.endsWith(".pptx"));
+    expect(htmlName).toBeTruthy();
+    expect(pptxName).toBeTruthy();
+    const html = await zip.file(htmlName!)!.async("string");
+    expect(html).toContain("Nodo");
+    expect(html).toContain("boot(");
+    expect(html).not.toContain("SECRETO");
+    expect(html).not.toContain("/s#");
+    const pptx = await JSZip.loadAsync(await zip.file(pptxName!)!.async("uint8array"));
+    const xml = await pptx.file("ppt/slides/slide2.xml")!.async("string");
+    expect(xml).toContain("cualquier PC");
+    expect(xml).not.toContain("Web Viewer");
+    expect(await pptx.file("docProps/core.xml")!.async("string")).toContain("A-Link");
+    const shares = (await (await api(page.request, "GET", `/graphs/${id}/shares`)).json()) as { items: unknown[] };
+    expect(shares.items).toHaveLength(0);
   });
 });
