@@ -1,5 +1,5 @@
 import { ENTITY_CATALOG, EVIDENCE_LABELS_ES, RELATIONSHIP_LABELS_ES, type GraphEdgeData, type GraphNodeData } from "@a-link/shared";
-import { ArrowRight, Crosshair, ImagePlus, Link2, Maximize2, Minimize2, Pencil, Trash2 } from "lucide-react";
+import { ArrowRight, ImagePlus, Link2, Maximize2, Minimize2, Pencil, Star, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -102,7 +102,10 @@ function EntityDetails({ graphId, node, editor, onConnectFrom, onDelete, onPickE
         <ShapeIcon type={node.type} size={36} className="shrink-0" />
         <div className="min-w-0">
           <h2 className="truncate text-base font-semibold">{node.label}</h2>
-          <Badge variant="secondary">{def.name}</Badge>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <Badge variant="secondary">{def.name}</Badge>
+            {graphView?.result.roots.has(node.id) && <Badge>Principal</Badge>}
+          </div>
         </div>
       </div>
 
@@ -304,19 +307,20 @@ function RelationshipSummary({ edge, editor, onEdit, onDelete }: { edge: GraphEd
   );
 }
 
-/** Recorrer el grafo desde una entidad: enfocar en ella, abrir sus vecinos ocultos o volver a cerrarlos. */
+/** Recorrer el grafo desde una entidad: marcarla como principal (centro), retraer o extender vecinos. */
 function Exploration({ node, graphView }: { node: GraphNodeData; graphView: GraphViewApi }) {
   const hidden = graphView.hiddenNeighborIds(node.id);
   const focusActive = graphView.result.focusActive;
   const canCollapse = graphView.canCollapse(node.id);
+  const isPrincipal = graphView.result.roots.has(node.id);
   return (
     <section aria-labelledby="explorar-titulo" className="grid gap-2">
       <h3 id="explorar-titulo" className="text-sm font-semibold">
         Explorar
       </h3>
       <div className="flex flex-wrap gap-2">
-        <Button type="button" variant="outline" size="sm" onClick={() => graphView.focusOn([node.id])}>
-          <Crosshair aria-hidden="true" /> Enfocar aquí
+        <Button type="button" variant={isPrincipal ? "default" : "outline"} size="sm" disabled={isPrincipal} onClick={() => graphView.focusOn([node.id])}>
+          <Star aria-hidden="true" /> {isPrincipal ? "Nodo principal" : "Marcar como principal"}
         </Button>
         {focusActive && hidden.length > 0 && (
           <Button type="button" variant="outline" size="sm" onClick={() => graphView.expand(node.id)}>
@@ -325,12 +329,20 @@ function Exploration({ node, graphView }: { node: GraphNodeData; graphView: Grap
         )}
         {canCollapse && (
           <Button type="button" variant="outline" size="sm" onClick={() => graphView.collapse(node.id)}>
-            <Minimize2 aria-hidden="true" /> Contraer vecinos
+            <Minimize2 aria-hidden="true" /> {isPrincipal ? "Retraer" : "Contraer vecinos"}
           </Button>
         )}
       </div>
       <p className="text-xs text-muted-foreground">
-        {focusActive ? (hidden.length > 0 ? `${hidden.length} vecinas ocultas. También puedes expandir con doble clic en el lienzo.` : "Se ven todos sus vecinos.") : "Enfocar muestra solo esta entidad y sus vecinas; luego puedes expandir con doble clic."}
+        {isPrincipal
+          ? hidden.length > 0
+            ? "Retraído: solo se ve esta entidad. Extiende para mostrar a sus vecinas."
+            : "Esta entidad es el centro del grafo. Retraer oculta a todos sus vecinos."
+          : focusActive
+            ? hidden.length > 0
+              ? `${hidden.length} vecinas ocultas. También puedes expandir con doble clic en el lienzo.`
+              : "Se ven todos sus vecinos."
+            : "Márcala como principal para centrar el grafo en ella y luego retraer o extender vecinos."}
       </p>
     </section>
   );

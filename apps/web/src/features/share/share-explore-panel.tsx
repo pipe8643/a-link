@@ -54,8 +54,8 @@ export function ShareExplorePanel({ doc, graphView }: Props) {
         </Button>
       )}
       <p className="text-xs text-muted-foreground">
-        Arrastra las entidades (el diseño de ZoomCharts las anima). Doble clic en un nodo principal para retraer el grafo a él
-        y sus vecinos; en un vecino, para extender o contraer más conexiones.
+        Arrastra las entidades (el diseño de ZoomCharts las anima). Marca un nodo como principal para centrar el grafo
+        en él; «Retraer» oculta a todos sus vecinos. Doble clic extiende o contrae más conexiones.
       </p>
     </aside>
   );

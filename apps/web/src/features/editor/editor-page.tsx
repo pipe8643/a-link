@@ -324,6 +324,7 @@ function Editor({ graphId, name, initialDoc, initialRevision }: { graphId: strin
               selection={selection}
               auraMode={graphView.auraMode}
               imageUrl={imageUrl}
+              anchorNodeId={graphView.view.focus?.roots[0] ?? null}
               onNodeDoubleClick={onNodeDoubleClick}
               dark={dark}
               onSelectionChange={editor.setSelection}

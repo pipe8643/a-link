@@ -4,6 +4,7 @@ import type { AuraMode } from "./auras";
 import {
   EMPTY_VIEW,
   addToFocus,
+  canCollapseNode,
   collapseNode,
   computeView,
   expandNode,
@@ -31,13 +32,14 @@ export interface GraphViewApi {
   showAll(): void;
   /** Quita solo los filtros y deja el enfoque. */
   clearFilters(): void;
+  /** Marca estas entidades como principales (la primera queda en el centro) y muestra sus vecinos. */
   focusOn(ids: readonly string[]): void;
   expand(id: string): void;
   collapse(id: string): void;
   /** Doble clic del editor: abre los vecinos ocultos o, si ya estaban abiertos, los cierra. Sin enfoque no hace nada. */
   toggleExpand(id: string): "expanded" | "collapsed" | null;
   /**
-   * Doble clic del visor compartido: retrae a un nodo principal, extiende/contrae vecinos o vuelve a mostrar todo.
+   * Doble clic del visor compartido: marca como principal, extiende/contrae vecinos o retrae (oculta a todos).
    * El editor sigue usando `toggleExpand` (no cambia datos).
    */
   explore(id: string): ExploreAction;
@@ -74,7 +76,7 @@ export function useGraphView(doc: GraphSnapshot, pinned: Pinned): GraphViewApi {
   );
 
   const hiddenNeighborIds = useCallback((id: string) => hiddenNeighbors(doc, view, result, id), [doc, view, result]);
-  const canCollapse = useCallback((id: string) => !!view.focus?.expanded.includes(id), [view.focus]);
+  const canCollapse = useCallback((id: string) => canCollapseNode(view, id), [view]);
 
   const toggleExpand = useCallback(
     (id: string): "expanded" | "collapsed" | null => {
@@ -83,7 +85,7 @@ export function useGraphView(doc: GraphSnapshot, pinned: Pinned): GraphViewApi {
         setView((v) => expandNode(v, id));
         return "expanded";
       }
-      if (view.focus?.expanded.includes(id)) {
+      if (canCollapseNode(view, id)) {
         setView((v) => collapseNode(v, id));
         return "collapsed";
       }

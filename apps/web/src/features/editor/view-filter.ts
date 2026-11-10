@@ -6,10 +6,20 @@ import type { EntityTypeId, EvidenceClass, GraphEdgeData, GraphSnapshot } from "
  *
  * Dos mecanismos que se combinan:
  *  - **Filtros** (tipos de entidad, naturaleza del dato, fechas de las relaciones).
- *  - **Enfoque**: se parte de una o varias entidades «raíz» y se ven ellas y sus vecinos directos; cada vecino se
- *    puede **expandir** (se suman sus vecinos) o **contraer**. Es la forma de recorrer grafos grandes sin ver todo
- *    a la vez.
+ *  - **Enfoque**: una entidad **principal** (primera raíz) queda en el centro; con `open` se ven sus vecinos
+ *    directos y cada vecino se puede **expandir** o **retraer**. «Retraer» en el principal oculta a todos los
+ *    vecinos. Es la forma de recorrer grafos grandes sin ver todo a la vez.
  */
+export interface FocusState {
+  roots: readonly string[];
+  expanded: readonly string[];
+  /**
+   * `true` (por defecto): se ven las raíces y sus vecinos. `false`: solo las raíces (y lo que se haya expandido).
+   * Ausente se trata como `true` para no romper vistas antiguas.
+   */
+  open?: boolean;
+}
+
 export interface ViewState {
   hiddenTypes: readonly EntityTypeId[];
   hiddenEvidence: readonly EvidenceClass[];
@@ -18,7 +28,7 @@ export interface ViewState {
   dateTo: string;
   /** Con un rango de fechas activo: ¿se muestran las relaciones que no tienen ninguna fecha? */
   includeUndated: boolean;
-  focus: { roots: readonly string[]; expanded: readonly string[] } | null;
+  focus: FocusState | null;
 }
 
 export const EMPTY_VIEW: ViewState = {
@@ -49,9 +59,11 @@ export interface ViewResult {
   hiddenNodes: number;
   hiddenEdges: number;
   visibleNodeIds: ReadonlySet<string>;
-  /** Entidades raíz del enfoque que siguen existiendo. */
+  /** Entidades raíz del enfoque que siguen existiendo. La primera es el nodo principal. */
   roots: ReadonlySet<string>;
   expanded: ReadonlySet<string>;
+  /** Si el principal muestra a sus vecinos (`false` = retraído: solo las raíces). */
+  neighborsOpen: boolean;
 }
 
 /** ¿La relación pasa los filtros que dependen de ella (naturaleza del dato y fechas)? */
@@ -92,19 +104,20 @@ export function computeView(doc: GraphSnapshot, view: ViewState, pinned: Pinned 
   const existing = new Set(doc.nodes.map((n) => n.id));
   const roots = new Set((view.focus?.roots ?? []).filter((id) => existing.has(id)));
   const expanded = new Set((view.focus?.expanded ?? []).filter((id) => existing.has(id)));
+  const neighborsOpen = view.focus?.open !== false;
   const focusActive = roots.size > 0; // un enfoque sin raíces válidas (borradas) se ignora
   const filtered = hasFilters(view) || focusActive;
 
   if (!filtered) {
-    return { doc, filtered: false, focusActive: false, hiddenNodes: 0, hiddenEdges: 0, visibleNodeIds: existing, roots, expanded };
+    return { doc, filtered: false, focusActive: false, hiddenNodes: 0, hiddenEdges: 0, visibleNodeIds: existing, roots, expanded, neighborsOpen };
   }
 
   let inFocus: Set<string> | null = null;
   if (focusActive) {
     const adj = adjacency(doc, view);
-    inFocus = new Set<string>();
-    for (const id of [...roots, ...expanded]) {
-      inFocus.add(id);
+    inFocus = new Set<string>([...roots, ...expanded]);
+    const hubs = neighborsOpen ? [...roots, ...expanded] : [...expanded];
+    for (const id of hubs) {
       for (const n of adj.get(id) ?? []) inFocus.add(n);
     }
   }
@@ -132,6 +145,7 @@ export function computeView(doc: GraphSnapshot, view: ViewState, pinned: Pinned 
     visibleNodeIds,
     roots,
     expanded,
+    neighborsOpen,
   };
 }
 
@@ -161,33 +175,51 @@ export function visibleNeighbors(doc: GraphSnapshot, view: ViewState, id: string
 
 const uniq = (ids: readonly string[]) => [...new Set(ids)];
 
-/** Enfoca en estas entidades (sustituye cualquier enfoque anterior). */
+const withFocus = (view: ViewState, focus: FocusState): ViewState => ({ ...view, focus });
+
+/** Enfoca en estas entidades (la primera es el nodo principal) y muestra sus vecinos. */
 export function focusOn(view: ViewState, ids: readonly string[]): ViewState {
   const roots = uniq(ids);
-  return roots.length === 0 ? { ...view, focus: null } : { ...view, focus: { roots, expanded: [] } };
+  return roots.length === 0 ? { ...view, focus: null } : withFocus(view, { roots, expanded: [], open: true });
 }
 
-/** Suma los vecinos de `id` a lo que se ve. Sin enfoque previo, `id` pasa a ser la raíz. */
+/** Suma los vecinos de `id` a lo que se ve. Sin enfoque previo, `id` pasa a ser el principal. */
 export function expandNode(view: ViewState, id: string): ViewState {
   if (!view.focus) return focusOn(view, [id]);
-  if (view.focus.roots.includes(id) || view.focus.expanded.includes(id)) return view;
-  return { ...view, focus: { roots: view.focus.roots, expanded: [...view.focus.expanded, id] } };
+  if (view.focus.roots.includes(id)) {
+    return view.focus.open === false ? withFocus(view, { ...view.focus, open: true }) : view;
+  }
+  if (view.focus.expanded.includes(id)) return view;
+  return withFocus(view, { ...view.focus, expanded: [...view.focus.expanded, id] });
 }
 
 /**
- * Quita lo que se abrió desde `id`. Una raíz no se puede contraer del todo (siempre se ven ella y sus vecinos);
- * para dejar de enfocar se usa «Mostrar todo».
+ * Quita lo que se abrió desde `id`. En el principal (una raíz) oculta a **todos** los vecinos, no solo los
+ * que se habían expandido. Para volver a ver el grafo entero se usa «Mostrar todo».
  */
 export function collapseNode(view: ViewState, id: string): ViewState {
-  if (!view.focus || !view.focus.expanded.includes(id)) return view;
-  return { ...view, focus: { roots: view.focus.roots, expanded: view.focus.expanded.filter((x) => x !== id) } };
+  if (!view.focus) return view;
+  if (view.focus.expanded.includes(id)) {
+    return withFocus(view, { ...view.focus, expanded: view.focus.expanded.filter((x) => x !== id) });
+  }
+  if (!view.focus.roots.includes(id)) return view;
+  if (view.focus.open === false && view.focus.expanded.length === 0) return view;
+  return withFocus(view, { roots: view.focus.roots, expanded: [], open: false });
+}
+
+/** ¿Se puede retraer `id`? Un vecino expandido, o el principal mientras se vean vecinos. */
+export function canCollapseNode(view: ViewState, id: string): boolean {
+  if (!view.focus) return false;
+  if (view.focus.expanded.includes(id)) return true;
+  if (!view.focus.roots.includes(id)) return false;
+  return view.focus.open !== false || view.focus.expanded.length > 0;
 }
 
 /** Añade una entidad recién creada al enfoque (si no, desaparecería al deseleccionarla). */
 export function addToFocus(view: ViewState, id: string): ViewState {
   if (!view.focus) return view;
   if (view.focus.roots.includes(id)) return view;
-  return { ...view, focus: { roots: [...view.focus.roots, id], expanded: view.focus.expanded } };
+  return withFocus(view, { ...view.focus, roots: [...view.focus.roots, id] });
 }
 
 export const clearFocus = (view: ViewState): ViewState => (view.focus ? { ...view, focus: null } : view);
@@ -195,19 +227,15 @@ export const clearFocus = (view: ViewState): ViewState => (view.focus ? { ...vie
 export type ExploreAction = "focused" | "expanded" | "collapsed" | "showall" | null;
 
 /**
- * Exploración al estilo de las demos de ZoomCharts: doble clic en un nodo principal retrae el grafo a él y
- * sus vecinos; en un vecino con más conexiones, las extiende; otro clic las contrae; en la raíz, vuelve a
- * verse todo. No cambia el documento, solo la vista.
+ * Exploración al estilo de las demos de ZoomCharts: doble clic sin enfoque marca el nodo como principal
+ * (centro, con vecinos); en un vecino con más conexiones, las extiende; otro clic las contrae; en el
+ * principal, retrae y oculta a todos los vecinos. «Mostrar todo» recupera el grafo entero.
  */
 export function toggleExplore(view: ViewState, result: ViewResult, doc: GraphSnapshot, id: string): { view: ViewState; action: ExploreAction } {
   if (!result.visibleNodeIds.has(id) && !doc.nodes.some((n) => n.id === id)) return { view, action: null };
   if (!result.focusActive) return { view: focusOn(view, [id]), action: "focused" };
   if (hiddenNeighbors(doc, view, result, id).length > 0) return { view: expandNode(view, id), action: "expanded" };
-  if (view.focus?.expanded.includes(id)) return { view: collapseNode(view, id), action: "collapsed" };
-  if (view.focus?.roots.includes(id)) {
-    if (view.focus.expanded.length > 0) return { view: { ...view, focus: { roots: view.focus.roots, expanded: [] } }, action: "collapsed" };
-    return { view: { ...view, focus: null }, action: "showall" };
-  }
+  if (canCollapseNode(view, id)) return { view: collapseNode(view, id), action: "collapsed" };
   return { view, action: null };
 }
 

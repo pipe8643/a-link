@@ -17,7 +17,7 @@ type State = { phase: "loading" } | { phase: "error"; error: SharedLinkError } |
 const NONE: CanvasSelection = { nodeIds: [], edgeIds: [] };
 
 const EXPLORE_STATUS = {
-  focused: "Grafo retraído a esa entidad y sus vecinos.",
+  focused: "Esta entidad es el centro del grafo.",
   expanded: "Vecinos extendidos.",
   collapsed: "Vecinos retraídos.",
   showall: "Se ve el grafo completo.",
@@ -133,6 +133,7 @@ export function SharedGraphExplorer({
         selection={selection}
         dark={dark}
         imageUrl={imageUrl}
+        anchorNodeId={graphView.view.focus?.roots[0] ?? null}
         onSelectionChange={setSelection}
         onNodeDoubleClick={(id) => {
           const action = graphView.explore(id);
@@ -191,31 +192,42 @@ function EntityCard({
       <div className="mt-3 flex flex-wrap gap-2">
         <Button
           type="button"
-          variant="outline"
+          variant={isRoot ? "default" : "outline"}
           size="sm"
+          disabled={isRoot}
           onClick={() => {
-            const action = graphView.explore(node.id);
-            onStatus(action ? EXPLORE_STATUS[action] : null);
+            graphView.focusOn([node.id]);
+            onStatus(EXPLORE_STATUS.focused);
           }}
         >
-          {focusActive && (hidden.length > 0 || canCollapse || isRoot) ? (
-            hidden.length > 0 ? (
-              <>
-                <Maximize2 aria-hidden="true" /> Extender ({hidden.length})
-              </>
-            ) : canCollapse || isRoot ? (
-              <>
-                <Minimize2 aria-hidden="true" /> Retraer
-              </>
-            ) : (
-              "Explorar"
-            )
-          ) : (
-            <>
-              <Minimize2 aria-hidden="true" /> Retraer a vecinos
-            </>
-          )}
+          {isRoot ? "Nodo principal" : "Marcar como principal"}
         </Button>
+        {focusActive && hidden.length > 0 && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              graphView.expand(node.id);
+              onStatus(EXPLORE_STATUS.expanded);
+            }}
+          >
+            <Maximize2 aria-hidden="true" /> Extender ({hidden.length})
+          </Button>
+        )}
+        {canCollapse && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              graphView.collapse(node.id);
+              onStatus(EXPLORE_STATUS.collapsed);
+            }}
+          >
+            <Minimize2 aria-hidden="true" /> Retraer
+          </Button>
+        )}
       </div>
     </aside>
   );

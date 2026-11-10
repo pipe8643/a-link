@@ -5,6 +5,7 @@ import {
   EMPTY_VIEW,
   addToFocus,
   clearFocus,
+  canCollapseNode,
   collapseNode,
   computeView,
   edgeAllowed,
@@ -123,17 +124,21 @@ describe("enfoque y expansión", () => {
     expect(ids(computeView(doc, v))).toEqual(["A", "B", "C"]);
   });
 
-  it("expandir sin enfoque previo lo crea; expandir dos veces o una raíz no cambia nada", () => {
+  it("expandir sin enfoque previo lo crea; expandir dos veces o una raíz ya abierta no cambia nada", () => {
     const v = expandNode(EMPTY_VIEW, A.id);
-    expect(v.focus).toEqual({ roots: [A.id], expanded: [] });
+    expect(v.focus).toEqual({ roots: [A.id], expanded: [], open: true });
     expect(expandNode(v, A.id)).toBe(v);
     const v2 = expandNode(v, B.id);
     expect(expandNode(v2, B.id)).toBe(v2);
   });
 
-  it("una raíz no se contrae; contraer algo no expandido no cambia nada", () => {
+  it("contraer el principal oculta a todos los vecinos; contraer algo no expandido no cambia nada", () => {
     const v = focusOn(EMPTY_VIEW, [A.id]);
-    expect(collapseNode(v, A.id)).toBe(v);
+    expect(canCollapseNode(v, A.id)).toBe(true);
+    const retracted = collapseNode(v, A.id);
+    expect(ids(computeView(doc, retracted))).toEqual(["A"]);
+    expect(retracted.focus).toMatchObject({ roots: [A.id], expanded: [], open: false });
+    expect(collapseNode(retracted, A.id)).toBe(retracted);
     expect(collapseNode(v, C.id)).toBe(v);
     expect(collapseNode(EMPTY_VIEW, A.id)).toBe(EMPTY_VIEW);
   });
@@ -206,14 +211,14 @@ describe("toggleExplore (visor / PowerPoint vivo)", () => {
     expect(ids(computeView(doc, close.view))).toEqual(["A", "B", "C"]);
   });
 
-  it("en la raíz: primero cierra lo extendido; después muestra todo el grafo", () => {
-    let v = expandNode(focusOn(EMPTY_VIEW, [B.id]), C.id);
+  it("en el principal retrae y oculta a todos los vecinos; otro clic los vuelve a mostrar", () => {
+    const v = expandNode(focusOn(EMPTY_VIEW, [B.id]), C.id);
     const fold = step(v, B.id);
     expect(fold.action).toBe("collapsed");
-    expect(ids(computeView(doc, fold.view))).toEqual(["A", "B", "C"]);
-    const all = step(fold.view, B.id);
-    expect(all.action).toBe("showall");
-    expect(computeView(doc, all.view).filtered).toBe(false);
+    expect(ids(computeView(doc, fold.view))).toEqual(["B"]);
+    const open = step(fold.view, B.id);
+    expect(open.action).toBe("expanded");
+    expect(ids(computeView(doc, open.view))).toEqual(["A", "B", "C"]);
   });
 
   it("un id desconocido no cambia nada", () => {

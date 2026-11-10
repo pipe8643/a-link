@@ -48,6 +48,6 @@ describe("SharedGraphExplorer", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "doble-clic-centro" }));
     expect(screen.getByText(/Enfocado: 2 de 3 entidades/)).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent(/retraído/i);
+    expect(screen.getByRole("status")).toHaveTextContent(/centro del grafo/i);
   });
 });

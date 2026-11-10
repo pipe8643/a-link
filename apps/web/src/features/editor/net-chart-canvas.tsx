@@ -16,6 +16,8 @@ export interface NetChartCanvasHandle {
   fit(): void;
   reorganize(): void;
   focusNodes(ids: string[]): void;
+  /** Fija el nodo en el centro de la vista (el diseño gira a su alrededor). */
+  centerOn(id: string): boolean;
   /** Posición actual de cada entidad en el lienzo (o `null` si el lienzo no está disponible). Se usa al exportar. */
   getPositions(): Map<string, { x: number; y: number }> | null;
 }
@@ -28,6 +30,8 @@ interface Props {
   auraMode?: AuraMode;
   /** URL de la imagen de cada entidad (mismo origen o `blob:`). Debe ser estable: se consulta al crear o actualizar nodos. */
   imageUrl?: ImageUrlResolver;
+  /** Nodo principal: se fija y se centra en el lienzo. `null` si no hay. */
+  anchorNodeId?: string | null;
   /** Visor sin edición de datos. Por defecto las entidades no se arrastran; el visor compartido puede activar `nodesMovable`. */
   readOnly?: boolean;
   /** Arrastre de entidades con el diseño dinámico de ZoomCharts. Si no se indica, vale `!readOnly`. */
@@ -91,6 +95,9 @@ export const NetChartCanvas = forwardRef<NetChartCanvasHandle, Props>(function N
   // Huella de los ajustes de halos ya aplicados (evita reenviarlos si no cambian).
   const auraKeyRef = useRef("");
   const appliedAuraModeRef = useRef<AuraMode>(props.auraMode ?? "none");
+  // Nodo principal ya centrado (no se vuelve a encuadrar en cada sincronización del documento).
+  const centeredAnchorRef = useRef<string | null>(null);
+  const pendingAnchorRef = useRef(false);
 
   /** Ejecuta una llamada a ZoomCharts; si lanza, el lienzo pasa a `error` en lugar de romper la aplicación. */
   const safe = useCallback(<T,>(fn: () => T): T | undefined => {
@@ -124,6 +131,25 @@ export const NetChartCanvas = forwardRef<NetChartCanvasHandle, Props>(function N
     );
   }, [safe]);
 
+  /** Fija el nodo en su sitio y encuadra la vista sobre él. Devuelve `false` si el lienzo aún no lo tiene. */
+  const centerOn = useCallback(
+    (id: string): boolean => {
+      const chart = chartRef.current;
+      if (!chart) return false;
+      return (
+        safe(() => {
+          const node = chart.getNode(id);
+          if (!node) return false;
+          const { x, y } = chart.getNodeDimensions(node);
+          chart.lockNode(node, Number.isFinite(x) ? x : 0, Number.isFinite(y) ? y : 0);
+          chart.scrollIntoView([id]);
+          return true;
+        }) ?? false
+      );
+    },
+    [safe],
+  );
+
   /** Envía al lienzo los estilos de halo si han cambiado (por ejemplo, al aparecer una etiqueta nueva). */
   const applyAuras = useCallback((chart: ZcNetChart, doc: GraphSnapshot, mode: AuraMode) => {
     const settings = auraSettings(doc, mode);
@@ -149,13 +175,21 @@ export const NetChartCanvas = forwardRef<NetChartCanvasHandle, Props>(function N
         const chart = chartRef.current;
         if (!chart) return;
         safe(() => {
-          for (const n of chart.nodes()) chart.unlockNode(n);
+          const anchor = propsRef.current.anchorNodeId ?? null;
+          for (const n of chart.nodes()) {
+            if (n.id !== anchor) chart.unlockNode(n);
+          }
+          if (anchor && chart.getNode(anchor)) chart.lockNode(anchor, 0, 0);
           chart.resetLayout();
+          if (anchor) chart.scrollIntoView([anchor]);
         });
       },
       focusNodes(ids) {
         const chart = chartRef.current;
         if (chart) safe(() => chart.scrollIntoView(ids));
+      },
+      centerOn(id) {
+        return centerOn(id);
       },
       getPositions() {
         const chart = chartRef.current;
@@ -172,7 +206,7 @@ export const NetChartCanvas = forwardRef<NetChartCanvasHandle, Props>(function N
         );
       },
     }),
-    [safe],
+    [safe, centerOn],
   );
 
   // --- Creación / destrucción del lienzo ---------------------------------------------------------
@@ -198,6 +232,8 @@ export const NetChartCanvas = forwardRef<NetChartCanvasHandle, Props>(function N
       rememberedRef.current.clear();
       imageUrlsRef.current.clear();
       auraKeyRef.current = "";
+      centeredAnchorRef.current = null;
+      pendingAnchorRef.current = false;
       if (c) {
         try {
           c.remove();
@@ -272,6 +308,13 @@ export const NetChartCanvas = forwardRef<NetChartCanvasHandle, Props>(function N
             onChartUpdate: () => {
               // Los objetos recién añadidos aparecen un poco después de addData: se completa la selección pendiente.
               if (pendingSelectionRef.current) pendingSelectionRef.current = !applySelection();
+              if (pendingAnchorRef.current) {
+                const id = propsRef.current.anchorNodeId;
+                if (id && centerOn(id)) {
+                  pendingAnchorRef.current = false;
+                  centeredAnchorRef.current = id;
+                }
+              }
             },
             onSelectionChange: () => {
               const g = gestureRef.current;
@@ -335,7 +378,7 @@ export const NetChartCanvas = forwardRef<NetChartCanvasHandle, Props>(function N
       cancelled = true;
       release();
     };
-  }, [attempt, applySelection, safe]);
+  }, [attempt, applySelection, safe, centerOn]);
 
   useEffect(() => {
     propsRef.current.onStatusChange?.(status);
@@ -417,6 +460,24 @@ export const NetChartCanvas = forwardRef<NetChartCanvasHandle, Props>(function N
     // Si falta algún objeto (todavía no creado por addData), se reintenta en el siguiente `chartUpdate`.
     pendingSelectionRef.current = !applySelection();
   }, [selection, doc, status, applySelection]);
+
+  // --- Nodo principal: se centra una vez al marcarlo (no en cada cambio del documento). ----------
+  const { anchorNodeId } = props;
+  useEffect(() => {
+    if (status !== "ready") return;
+    if (!anchorNodeId) {
+      centeredAnchorRef.current = null;
+      pendingAnchorRef.current = false;
+      return;
+    }
+    if (centeredAnchorRef.current === anchorNodeId) return;
+    if (centerOn(anchorNodeId)) {
+      centeredAnchorRef.current = anchorNodeId;
+      pendingAnchorRef.current = false;
+    } else {
+      pendingAnchorRef.current = true;
+    }
+  }, [anchorNodeId, doc, status, centerOn]);
 
   // --- Tema claro/oscuro -------------------------------------------------------------------------
   const { dark } = props;

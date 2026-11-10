@@ -97,7 +97,7 @@ test.describe("exploración: filtros y enfoque desde los paneles", () => {
   test("enfocar, expandir y contraer vecinos desde el panel de detalles", async ({ page }) => {
     await seed(page, "xp4");
     await pick(page, "Beto");
-    await page.getByRole("button", { name: "Enfocar aquí" }).click();
+    await page.getByRole("button", { name: "Marcar como principal" }).click();
     await summary(page, "Enfocado: 3 de 6 entidades · 2 de 5 relaciones"); // Beto, Centro y Lejano
 
     await pick(page, "Centro");
@@ -109,6 +109,18 @@ test.describe("exploración: filtros y enfoque desde los paneles", () => {
     await summary(page, "Enfocado: 3 de 6 entidades");
     await page.getByRole("button", { name: "Mostrar todo" }).first().click();
     await expect(page.getByText(/Enfocado:/)).toHaveCount(0);
+  });
+
+  test("el nodo principal queda en el centro y retraer oculta a todos sus vecinos", async ({ page }) => {
+    await seed(page, "xp-principal");
+    await pick(page, "Centro");
+    await page.getByRole("button", { name: "Marcar como principal" }).click();
+    await summary(page, "Enfocado: 5 de 6 entidades · 4 de 5 relaciones"); // Centro y sus 4 vecinas; Lejano queda fuera
+    await expect(page.getByRole("button", { name: "Nodo principal" })).toBeDisabled();
+    await page.getByRole("button", { name: "Retraer" }).click();
+    await summary(page, "Enfocado: 1 de 6 entidades");
+    await page.getByRole("button", { name: "Expandir vecinos (4)" }).click();
+    await summary(page, "Enfocado: 5 de 6 entidades");
   });
 
   test("la selección se mantiene visible aunque el filtro la ocultaría, y la lista de relaciones avisa de las ocultas", async ({ page }) => {
@@ -339,7 +351,7 @@ test.describe("exploración: lienzo de ZoomCharts", () => {
     await ready(page);
     // Se enfoca en «Casa» (solo tiene un vecino: Centro): quedan dos entidades unidas por una línea, centradas.
     await pick(page, "Casa");
-    await page.getByRole("button", { name: "Enfocar aquí" }).click();
+    await page.getByRole("button", { name: "Marcar como principal" }).click();
     await summary(page, "Enfocado: 2 de 6 entidades");
     await page.getByRole("button", { name: "Ajustar a la vista" }).click();
     await page.waitForTimeout(1500);

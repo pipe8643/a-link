@@ -49,20 +49,31 @@ describe("useGraphView", () => {
     expect(ids(result)).toEqual(["A", "B", "C"]);
   });
 
-  it("explore: sin enfoque retrae; luego extiende, contrae y vuelve a mostrar todo", () => {
+  it("explore: sin enfoque marca el principal; luego extiende, contrae y retrae a todos los vecinos", () => {
     const { result } = setup();
     let r: ReturnType<typeof result.current.explore> = null;
     act(() => void (r = result.current.explore(b.id)));
     expect(r).toBe("focused");
     expect(ids(result)).toEqual(["A", "B", "C"]);
+    expect(result.current.canCollapse(b.id)).toBe(true);
     act(() => void (r = result.current.explore(c.id)));
     expect(r).toBe("expanded");
     expect(ids(result)).toContain("D");
     act(() => void (r = result.current.explore(c.id)));
     expect(r).toBe("collapsed");
     act(() => void (r = result.current.explore(b.id)));
-    expect(r).toBe("showall");
-    expect(result.current.result.filtered).toBe(false);
+    expect(r).toBe("collapsed");
+    expect(ids(result)).toEqual(["B"]);
+  });
+
+  it("retraer el principal oculta a todos sus vecinos", () => {
+    const { result } = setup();
+    act(() => result.current.focusOn([b.id]));
+    expect(ids(result)).toEqual(["A", "B", "C"]);
+    act(() => result.current.collapse(b.id));
+    expect(ids(result)).toEqual(["B"]);
+    act(() => result.current.expand(b.id));
+    expect(ids(result)).toEqual(["A", "B", "C"]);
   });
 
   it("doble clic: sin enfoque no hace nada; con enfoque expande y luego contrae", () => {

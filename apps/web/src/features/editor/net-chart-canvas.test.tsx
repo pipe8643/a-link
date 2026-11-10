@@ -105,9 +105,14 @@ class FakeChart {
   }
   scrollIntoView() {
     this.guard();
+    this.calls.push("scrollIntoView");
   }
   unlockNode() {
     this.guard();
+  }
+  lockNode() {
+    this.guard();
+    this.calls.push("lockNode");
   }
   resetLayout() {
     this.guard();
@@ -328,6 +333,7 @@ describe("NetChartCanvas · gestos", () => {
       ref.current!.zoomBy(1.4);
       ref.current!.fit();
       ref.current!.reorganize();
+      ref.current!.centerOn("x");
     }).not.toThrow();
     await waitFor(() => expect(status()).toBe("error"));
   });
@@ -424,6 +430,14 @@ describe("NetChartCanvas · vista (ocultar/mostrar), halos y doble clic", () => 
     const styles = (chart().settingsUpdates.at(-1) as { auras: { style: Record<string, unknown> } }).auras.style;
     expect(Object.keys(styles)).toEqual(["tag:sur"]);
     expect(chart().added.at(-1)![0]!.style?.aura).toBe("tag:sur");
+  });
+
+  it("el nodo principal se fija y se encuadra en el centro", async () => {
+    const doc = makeDoc(2);
+    const id = doc.nodes[0]!.id;
+    const { chart } = await mount(doc, { anchorNodeId: id });
+    expect(chart().calls).toContain("lockNode");
+    expect(chart().calls).toContain("scrollIntoView");
   });
 
   it("doble clic sobre una entidad avisa con su id; sobre el fondo no", async () => {
